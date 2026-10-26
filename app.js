@@ -40,7 +40,10 @@ const state = {
   adsModal: {
     accountId: null,
     filter: "all",
-    search: ""
+    search: "",
+    sortColumn: "cpl",
+    sortDirection: "desc",
+    collapsedAdsets: {}
   },
   loading: false
 };
@@ -129,7 +132,11 @@ const DOM = {
   clientAdsKpiBar: document.querySelector("#clientAdsKpiBar"),
   clientAdsSearchInput: document.querySelector("#clientAdsSearchInput"),
   clientAdsFilterButtons: document.querySelectorAll(".ads-filter-btn"),
+  clientAdsSortSelect: document.querySelector("#clientAdsSortSelect"),
+  btnExpandAllAdsets: document.querySelector("#btnExpandAllAdsets"),
+  btnCollapseAllAdsets: document.querySelector("#btnCollapseAllAdsets"),
   clientAdsLoading: document.querySelector("#clientAdsLoading"),
+  clientAdsGroupedContainer: document.querySelector("#clientAdsGroupedContainer"),
   clientAdsTableBody: document.querySelector("#clientAdsTableBody"),
   clientAdsFooterCount: document.querySelector("#clientAdsFooterCount"),
   filterCountAll: document.querySelector("#filterCountAll"),
@@ -780,13 +787,13 @@ function renderClientsTable() {
               </svg>
               <span>Report dettagliato</span>
             </button>
-            <button class="btn btn-ads-details ${hasOverAds ? 'btn-ads-danger' : 'btn-ads-normal'}" type="button" onclick="event.stopPropagation(); openClientAdsModal('${client.id}')" title="${hasOverAds ? '⚠️ Attenzione: alcune inserzioni superano la soglia di costo!' : 'Dettagli e gestione inserzioni del cliente'}">
+            <button class="btn btn-ads-details ${hasOverAds ? 'btn-ads-danger' : 'btn-ads-normal'}" type="button" onclick="event.stopPropagation(); openClientAdsModal('${client.id}')" title="${hasOverAds ? 'Attenzione: alcune inserzioni superano la soglia di costo!' : 'Dettagli e gestione inserzioni del cliente'}">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
                 <polyline points="2 17 12 22 22 17"></polyline>
                 <polyline points="2 12 12 17 22 12"></polyline>
               </svg>
-              <span>${hasOverAds ? '⚠️ Dettagli Inserzioni' : 'Dettagli Inserzioni'}</span>
+              <span>Dettagli Inserzioni</span>
             </button>
           </div>
           <button class="btn-expand-chevron" type="button" onclick="event.stopPropagation(); toggleClientExpand('${client.id}')" title="Espandi/Riduci dettagli inline">
@@ -1365,11 +1372,11 @@ window.openDetailedClientReport = async function(accountId) {
     const isOver = (totalLeads > 0 && cpl > clientThreshold) || (totalLeads === 0 && spend >= clientThreshold);
 
     DOM.clientReportMetaPills.innerHTML = `
-      <span class="report-meta-pill">📅 Periodo: <strong>${getPresetLabel(state.datePreset)}</strong></span>
-      <span class="report-meta-pill">💶 Spesa: <strong>${formatCurrency(spend, client.currency)}</strong></span>
-      <span class="report-meta-pill">👥 Lead: <strong>${totalLeads}</strong></span>
-      <span class="report-meta-pill ${isOver ? "is-danger" : "is-ok"}">🎯 CPL: <strong>${totalLeads > 0 ? formatCurrency(cpl, client.currency) : "-"}</strong></span>
-      <span class="report-meta-pill ${isOver ? "is-danger" : "is-ok"}">⚠️ Soglia: <strong>€ ${clientThreshold.toFixed(2)}</strong> (${isOver ? "Superata" : "In soglia"})</span>
+      <span class="report-meta-pill">Periodo: <strong>${getPresetLabel(state.datePreset)}</strong></span>
+      <span class="report-meta-pill">Spesa: <strong>${formatCurrency(spend, client.currency)}</strong></span>
+      <span class="report-meta-pill">Lead: <strong>${totalLeads}</strong></span>
+      <span class="report-meta-pill ${isOver ? "is-danger" : "is-ok"}">CPL: <strong>${totalLeads > 0 ? formatCurrency(cpl, client.currency) : "-"}</strong></span>
+      <span class="report-meta-pill ${isOver ? "is-danger" : "is-ok"}">Soglia: <strong>€ ${clientThreshold.toFixed(2)}</strong> (${isOver ? "Superata" : "In soglia"})</span>
     `;
   }
 };
@@ -1382,6 +1389,11 @@ window.openClientAdsModal = async function(accountId) {
   state.adsModal.accountId = accountId;
   state.adsModal.filter = "all";
   state.adsModal.search = "";
+  if (!state.adsModal.sortColumn) {
+    state.adsModal.sortColumn = "cpl";
+    state.adsModal.sortDirection = "desc";
+  }
+  state.adsModal.collapsedAdsets = {};
 
   const client = state.clientsData.find(c => c.id === accountId) || state.allAdAccounts.find(a => a.id === accountId) || { id: accountId, name: accountId };
   const clientThreshold = getClientThreshold(accountId);
@@ -1394,6 +1406,9 @@ window.openClientAdsModal = async function(accountId) {
   }
   if (DOM.clientAdsSearchInput) {
     DOM.clientAdsSearchInput.value = "";
+  }
+  if (DOM.clientAdsSortSelect) {
+    DOM.clientAdsSortSelect.value = `${state.adsModal.sortColumn}_${state.adsModal.sortDirection}`;
   }
   if (DOM.clientAdsFilterButtons) {
     DOM.clientAdsFilterButtons.forEach(btn => {
@@ -1413,7 +1428,7 @@ window.openClientAdsModal = async function(accountId) {
   }
   if (!detail || !detail.ads) {
     if (DOM.clientAdsLoading) DOM.clientAdsLoading.style.display = "flex";
-    if (DOM.clientAdsTableBody) DOM.clientAdsTableBody.innerHTML = "";
+    if (DOM.clientAdsGroupedContainer) DOM.clientAdsGroupedContainer.innerHTML = "";
 
     try {
       const params = new URLSearchParams({
@@ -1427,13 +1442,11 @@ window.openClientAdsModal = async function(accountId) {
       detail = await api(`/api/meta/insights/summary?${params.toString()}`);
       state.expandedDetailsCache[accountId] = detail;
     } catch (err) {
-      if (DOM.clientAdsTableBody) {
-        DOM.clientAdsTableBody.innerHTML = `
-          <tr>
-            <td colspan="8" style="text-align: center; color: var(--color-rose); padding: 30px;">
-              ⚠️ Errore caricamento inserzioni: ${escapeHtml(err.message)}
-            </td>
-          </tr>
+      if (DOM.clientAdsGroupedContainer) {
+        DOM.clientAdsGroupedContainer.innerHTML = `
+          <div style="text-align: center; color: var(--color-rose); padding: 30px; background: #0d111a; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+            Errore caricamento inserzioni: ${escapeHtml(err.message)}
+          </div>
         `;
       }
       if (DOM.clientAdsLoading) DOM.clientAdsLoading.style.display = "none";
@@ -1443,6 +1456,48 @@ window.openClientAdsModal = async function(accountId) {
 
   if (DOM.clientAdsLoading) DOM.clientAdsLoading.style.display = "none";
   renderClientAdsModalContent(accountId);
+};
+
+window.toggleAdsetCollapse = function(adsetId) {
+  const card = document.getElementById(`adset-group-${adsetId}`);
+  if (card) {
+    card.classList.toggle("is-collapsed");
+    state.adsModal.collapsedAdsets[adsetId] = card.classList.contains("is-collapsed");
+  }
+};
+
+window.setAllAdsetsCollapsed = function(collapsed) {
+  const cards = document.querySelectorAll(".adset-group-card");
+  cards.forEach(card => {
+    const id = card.dataset.adsetId;
+    if (collapsed) {
+      card.classList.add("is-collapsed");
+      if (id) state.adsModal.collapsedAdsets[id] = true;
+    } else {
+      card.classList.remove("is-collapsed");
+      if (id) state.adsModal.collapsedAdsets[id] = false;
+    }
+  });
+};
+
+window.toggleAdsModalSort = function(column) {
+  if (state.adsModal.sortColumn === column) {
+    state.adsModal.sortDirection = state.adsModal.sortDirection === "asc" ? "desc" : "asc";
+  } else {
+    state.adsModal.sortColumn = column;
+    state.adsModal.sortDirection = (column === "name" || column === "status") ? "asc" : "desc";
+  }
+
+  if (DOM.clientAdsSortSelect) {
+    const val = `${state.adsModal.sortColumn}_${state.adsModal.sortDirection}`;
+    if (Array.from(DOM.clientAdsSortSelect.options).some(o => o.value === val)) {
+      DOM.clientAdsSortSelect.value = val;
+    }
+  }
+
+  if (state.adsModal.accountId) {
+    renderClientAdsModalContent(state.adsModal.accountId);
+  }
 };
 
 function renderClientAdsModalContent(accountId) {
@@ -1469,7 +1524,7 @@ function renderClientAdsModalContent(accountId) {
   if (DOM.filterCountActive) DOM.filterCountActive.textContent = activeAds.length;
   if (DOM.filterCountDanger) DOM.filterCountDanger.textContent = dangerAds.length;
 
-  // Render KPI Bar
+  // Render KPI Bar (No emojis)
   if (DOM.clientAdsKpiBar) {
     DOM.clientAdsKpiBar.innerHTML = `
       <div class="ads-kpi-item">
@@ -1527,71 +1582,250 @@ function renderClientAdsModalContent(accountId) {
     DOM.clientAdsFooterCount.textContent = `${filtered.length} di ${totalAds} inserzioni visualizzate (Filtro: ${filterMode === 'all' ? 'Tutte' : filterMode === 'active' ? 'Solo Attive' : 'Sopra Soglia'})`;
   }
 
-  // Render Table
-  if (!DOM.clientAdsTableBody) return;
+  if (!DOM.clientAdsGroupedContainer) return;
 
   if (filtered.length === 0) {
-    DOM.clientAdsTableBody.innerHTML = `
-      <tr>
-        <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 40px;">
-          Nessuna inserzione trovata con i filtri attuali.
-        </td>
-      </tr>
+    DOM.clientAdsGroupedContainer.innerHTML = `
+      <div style="text-align: center; color: var(--text-dim); padding: 48px 20px; background: #0d111a; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+        <p style="font-size: 0.95rem; font-weight: 600; color: #ffffff; margin-bottom: 6px;">Nessuna inserzione trovata</p>
+        <span style="font-size: 0.82rem;">Nessuna inserzione corrisponde ai filtri di ricerca impostati.</span>
+      </div>
     `;
     return;
   }
 
-  DOM.clientAdsTableBody.innerHTML = filtered.map(ad => {
-    const isActive = ad.status === "ACTIVE" || ad.effective_status === "ACTIVE";
-    const isOver = isActive && ((ad.totalLeads > 0 && ad.cpl > clientThreshold) || (ad.totalLeads === 0 && ad.spend >= clientThreshold));
+  // Group filtered ads by AdSet
+  const groupsMap = new Map();
+  filtered.forEach(ad => {
+    const adsetId = ad.adset_id || "unassigned";
+    if (!groupsMap.has(adsetId)) {
+      groupsMap.set(adsetId, {
+        id: adsetId,
+        name: ad.adset_name || "Gruppo Inserzioni",
+        campaignId: ad.campaign_id || "",
+        campaignName: ad.campaign_name || "Campagna",
+        ads: []
+      });
+    }
+    groupsMap.get(adsetId).ads.push(ad);
+  });
 
-    const cplClass = ad.totalLeads === 0
-      ? "cpl-tag tag-zero"
-      : (isOver ? "cpl-tag tag-danger" : "cpl-tag tag-ok");
+  const groups = Array.from(groupsMap.values());
 
-    const adManagerLink = ad.adsManagerUrl || `https://www.facebook.com/adsmanager/manage/ads?selected_ad_ids=${ad.id}`;
+  // Compute metrics per AdSet group
+  groups.forEach(g => {
+    g.totalSpend = g.ads.reduce((s, a) => s + (a.spend || 0), 0);
+    g.totalLeads = g.ads.reduce((s, a) => s + (a.totalLeads || 0), 0);
+    g.avgCpl = g.totalLeads > 0 ? g.totalSpend / g.totalLeads : 0;
+    g.activeCount = g.ads.filter(a => a.status === "ACTIVE" || a.effective_status === "ACTIVE").length;
+    g.dangerCount = g.ads.filter(a => {
+      const isActive = a.status === "ACTIVE" || a.effective_status === "ACTIVE";
+      return isActive && ((a.totalLeads > 0 && a.cpl > clientThreshold) || (a.totalLeads === 0 && a.spend >= clientThreshold));
+    }).length;
+    g.hasDanger = g.dangerCount > 0;
+  });
+
+  // Sorting
+  const sortCol = state.adsModal.sortColumn || "cpl";
+  const sortDir = state.adsModal.sortDirection || "desc";
+
+  function getAdSortValue(ad, col) {
+    switch (col) {
+      case "cpl":
+        if (ad.totalLeads > 0) return ad.cpl;
+        if (ad.spend > 0) return 100000 + ad.spend;
+        return 0;
+      case "spend":
+        return ad.spend || 0;
+      case "leads":
+        return ad.totalLeads || 0;
+      case "name":
+        return (ad.name || "").toLowerCase();
+      case "status":
+        return (ad.status === "ACTIVE" || ad.effective_status === "ACTIVE") ? 1 : 0;
+      case "ctr":
+        return ad.ctr || 0;
+      case "cpc":
+        return ad.cpc || 0;
+      case "impressions":
+        return ad.impressions || 0;
+      default:
+        return 0;
+    }
+  }
+
+  function getGroupSortValue(g, col) {
+    switch (col) {
+      case "cpl":
+        if (g.totalLeads > 0) return g.avgCpl;
+        if (g.totalSpend > 0) return 100000 + g.totalSpend;
+        return 0;
+      case "spend":
+        return g.totalSpend;
+      case "leads":
+        return g.totalLeads;
+      case "name":
+        return (g.name || "").toLowerCase();
+      case "status":
+        return g.activeCount;
+      default:
+        return 0;
+    }
+  }
+
+  // Sort groups
+  groups.sort((a, b) => {
+    const valA = getGroupSortValue(a, sortCol);
+    const valB = getGroupSortValue(b, sortCol);
+    if (typeof valA === "string") {
+      return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    }
+    return sortDir === "asc" ? valA - valB : valB - valA;
+  });
+
+  // Sort ads inside each group
+  groups.forEach(g => {
+    g.ads.sort((a, b) => {
+      const valA = getAdSortValue(a, sortCol);
+      const valB = getAdSortValue(b, sortCol);
+      if (typeof valA === "string") {
+        return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      return sortDir === "asc" ? valA - valB : valB - valA;
+    });
+  });
+
+  // Render AdSets with clean, emoji-free modern layout
+  DOM.clientAdsGroupedContainer.innerHTML = groups.map(group => {
+    const isCollapsed = !!state.adsModal.collapsedAdsets[group.id];
+    const safeId = escapeHtml(group.id);
+
+    const adsRows = group.ads.map(ad => {
+      const isActive = ad.status === "ACTIVE" || ad.effective_status === "ACTIVE";
+      const isOver = isActive && ((ad.totalLeads > 0 && ad.cpl > clientThreshold) || (ad.totalLeads === 0 && ad.spend >= clientThreshold));
+
+      const cplClass = ad.totalLeads === 0
+        ? "cpl-tag tag-zero"
+        : (isOver ? "cpl-tag tag-danger" : "cpl-tag tag-ok");
+
+      const adManagerLink = ad.adsManagerUrl || `https://www.facebook.com/adsmanager/manage/ads?selected_ad_ids=${ad.id}`;
+
+      return `
+        <tr class="${isOver ? 'ad-row-danger' : ''}">
+          <td>
+            <div class="ad-cell-main">
+              <a href="${adManagerLink}" target="_blank" rel="noopener noreferrer" class="ad-name-title" title="Apri inserzione in Meta Ads Manager">
+                <span>${escapeHtml(ad.name)}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                  <polyline points="15 3 21 3 21 9"></polyline>
+                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+              </a>
+              ${isOver ? `<span class="ad-threshold-alert-tag">Costo sopra la soglia (€ ${clientThreshold.toFixed(2)})</span>` : ""}
+            </div>
+          </td>
+          <td class="text-center">
+            <div class="ad-status-action-wrap">
+              <span class="ad-status-pill ${isActive ? 'is-active' : 'is-paused'}">
+                <span class="status-dot"></span>
+                <span>${isActive ? 'Attiva' : 'In Pausa'}</span>
+              </span>
+              <button type="button" class="btn-toggle-ad-state ${isActive ? 'btn-pause-action' : 'btn-activate-action'}"
+                      onclick="event.stopPropagation(); toggleAdStatusInModal('${ad.id}', '${isActive ? 'PAUSED' : 'ACTIVE'}', '${accountId}')"
+                      title="${isActive ? 'Metti in pausa questa inserzione su Meta' : 'Riattiva questa inserzione su Meta'}">
+                ${isActive ? 'Metti in Pausa' : 'Attiva Inserzione'}
+              </button>
+            </div>
+          </td>
+          <td class="text-right val-mono">${formatCurrency(ad.spend || 0, currency)}</td>
+          <td class="text-right val-mono ${ad.totalLeads > 0 ? 'text-emerald' : ''}">${formatNumber(ad.totalLeads || 0)}</td>
+          <td class="text-right">
+            <span class="${cplClass}">
+              ${ad.totalLeads > 0 ? formatCurrency(ad.cpl, currency) : (ad.spend >= clientThreshold ? '0 Lead (Sopra Soglia)' : '-')}
+            </span>
+          </td>
+          <td class="text-right val-mono">${(ad.ctr || 0).toFixed(2)}%</td>
+          <td class="text-right val-mono">${formatCurrency(ad.cpc || 0, currency)}</td>
+          <td class="text-right val-mono">${formatNumber(ad.impressions || 0)}</td>
+        </tr>
+      `;
+    }).join("");
 
     return `
-      <tr class="${isOver ? 'ad-row-danger' : ''}">
-        <td>
-          <div class="ad-cell-main">
-            <a href="${adManagerLink}" target="_blank" rel="noopener noreferrer" class="ad-name-title" title="Apri inserzione in Meta Ads Manager">
-              <span>${escapeHtml(ad.name)}</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                <polyline points="15 3 21 3 21 9"></polyline>
-                <line x1="10" y1="14" x2="21" y2="3"></line>
-              </svg>
-            </a>
-            <div class="ad-parent-info">
-              📁 ${escapeHtml(ad.campaign_name || "Campagna")} ${ad.adset_name ? `• 🎯 ${escapeHtml(ad.adset_name)}` : ""}
+      <div class="adset-group-card ${group.hasDanger ? 'has-danger-ads' : ''} ${isCollapsed ? 'is-collapsed' : ''}" id="adset-group-${safeId}" data-adset-id="${safeId}">
+        <div class="adset-group-header" onclick="toggleAdsetCollapse('${safeId}')">
+          <div class="adset-header-left">
+            <svg class="adset-chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+            <div class="adset-title-block">
+              <div class="adset-title-row">
+                <span class="adset-name-text" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}</span>
+                ${group.hasDanger ? `<span class="adset-danger-badge">${group.dangerCount} Sopra Soglia</span>` : ''}
+              </div>
+              <div class="adset-camp-tag">
+                <span>Campagna: ${escapeHtml(group.campaignName)}</span>
+                <span>•</span>
+                <span>${group.ads.length} inserzion${group.ads.length === 1 ? 'e' : 'i'} (${group.activeCount} attiv${group.activeCount === 1 ? 'a' : 'e'})</span>
+              </div>
             </div>
-            ${isOver ? `<span style="color: var(--color-rose); font-size: 0.72rem; font-weight: 700;">⚠️ Costo sopra la soglia (€ ${clientThreshold.toFixed(2)})</span>` : ""}
           </div>
-        </td>
-        <td class="text-center">
-          <div class="ad-status-action-wrap">
-            <span class="alert-badge ${isActive ? 'badge-ok' : 'badge-danger'}">
-              ${isActive ? '🟢 Attiva' : '⏸️ In Pausa'}
-            </span>
-            <button type="button" class="btn-toggle-ad-state ${isActive ? 'btn-pause-action' : 'btn-activate-action'}"
-                    onclick="event.stopPropagation(); toggleAdStatusInModal('${ad.id}', '${isActive ? 'PAUSED' : 'ACTIVE'}', '${accountId}')"
-                    title="${isActive ? 'Ferma questa inserzione su Meta' : 'Riattiva questa inserzione su Meta'}">
-              ${isActive ? '⏸️ Metti in Pausa' : '▶️ Attiva Inserzione'}
-            </button>
+
+          <div class="adset-header-right">
+            <div class="adset-stat-item">
+              <span class="adset-stat-label">Spesa</span>
+              <span class="adset-stat-val">${formatCurrency(group.totalSpend, currency)}</span>
+            </div>
+            <div class="adset-stat-item">
+              <span class="adset-stat-label">Lead</span>
+              <span class="adset-stat-val ${group.totalLeads > 0 ? 'text-success' : ''}">${formatNumber(group.totalLeads)}</span>
+            </div>
+            <div class="adset-stat-item">
+              <span class="adset-stat-label">CPL Medio</span>
+              <span class="adset-stat-val ${group.totalLeads > 0 && group.avgCpl > clientThreshold ? 'text-danger' : (group.totalLeads > 0 ? 'text-success' : '')}">
+                ${group.totalLeads > 0 ? formatCurrency(group.avgCpl, currency) : '-'}
+              </span>
+            </div>
           </div>
-        </td>
-        <td class="text-right val-mono">${formatCurrency(ad.spend || 0, currency)}</td>
-        <td class="text-right val-mono ${ad.totalLeads > 0 ? 'text-emerald' : ''}">${formatNumber(ad.totalLeads || 0)}</td>
-        <td class="text-right">
-          <span class="${cplClass}">
-            ${ad.totalLeads > 0 ? formatCurrency(ad.cpl, currency) : (ad.spend >= clientThreshold ? '⚠️ 0 Lead' : '-')}
-          </span>
-        </td>
-        <td class="text-right val-mono">${(ad.ctr || 0).toFixed(2)}%</td>
-        <td class="text-right val-mono">${formatCurrency(ad.cpc || 0, currency)}</td>
-        <td class="text-right val-mono">${formatNumber(ad.impressions || 0)}</td>
-      </tr>
+        </div>
+
+        <div class="adset-group-body">
+          <table class="adset-ads-table">
+            <thead>
+              <tr>
+                <th class="sortable-th ${sortCol === 'name' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('name')">
+                  Inserzione <span class="sort-arrow-icon">${sortCol === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-center ${sortCol === 'status' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('status')">
+                  Stato <span class="sort-arrow-icon">${sortCol === 'status' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-right ${sortCol === 'spend' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('spend')">
+                  Spesa <span class="sort-arrow-icon">${sortCol === 'spend' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-right ${sortCol === 'leads' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('leads')">
+                  Lead <span class="sort-arrow-icon">${sortCol === 'leads' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-right ${sortCol === 'cpl' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('cpl')">
+                  CPL <span class="sort-arrow-icon">${sortCol === 'cpl' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-right ${sortCol === 'ctr' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('ctr')">
+                  CTR <span class="sort-arrow-icon">${sortCol === 'ctr' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-right ${sortCol === 'cpc' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('cpc')">
+                  CPC <span class="sort-arrow-icon">${sortCol === 'cpc' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-right ${sortCol === 'impressions' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('impressions')">
+                  Impression <span class="sort-arrow-icon">${sortCol === 'impressions' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              ${adsRows}
+            </tbody>
+          </table>
+        </div>
+      </div>
     `;
   }).join("");
 }
@@ -1794,6 +2028,24 @@ function bindEvents() {
         renderClientAdsModalContent(state.adsModal.accountId);
       }
     });
+  });
+
+  DOM.clientAdsSortSelect?.addEventListener("change", (e) => {
+    const val = e.target.value;
+    const parts = val.split("_");
+    state.adsModal.sortColumn = parts[0] || "cpl";
+    state.adsModal.sortDirection = parts[1] || "desc";
+    if (state.adsModal.accountId) {
+      renderClientAdsModalContent(state.adsModal.accountId);
+    }
+  });
+
+  DOM.btnExpandAllAdsets?.addEventListener("click", () => {
+    setAllAdsetsCollapsed(false);
+  });
+
+  DOM.btnCollapseAllAdsets?.addEventListener("click", () => {
+    setAllAdsetsCollapsed(true);
   });
 
   // Meta Auth Bindings
