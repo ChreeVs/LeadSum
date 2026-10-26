@@ -1545,9 +1545,14 @@ body {
 .ads-toolbar-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  flex: 1;
+  flex: 1 1 480px;
+}
+
+.ads-toolbar-left .search-input-wrap {
+  flex: 1 1 200px;
+  min-width: 180px;
 }
 
 .ads-toolbar-right {
@@ -1555,6 +1560,7 @@ body {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .ads-sort-group {
@@ -1603,6 +1609,7 @@ body {
   border-radius: var(--radius-sm);
   padding: 2px;
   gap: 2px;
+  flex-shrink: 0;
 }
 
 .ads-filter-btn {
@@ -1638,20 +1645,31 @@ body {
    ========================================================================== */
 
 .ads-grouped-container {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  max-height: 580px;
+  display: block;
+  flex: 1 1 auto;
+  max-height: calc(88vh - 270px);
+  min-height: 240px;
   overflow-y: auto;
-  padding-right: 4px;
+  overflow-x: hidden;
+  padding-right: 6px;
 }
 
 .adset-group-card {
+  display: block;
+  width: 100%;
+  flex-shrink: 0;
+  min-height: fit-content;
+  box-sizing: border-box;
+  margin-bottom: 12px;
   background: #0d111a;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   overflow: hidden;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.adset-group-card:last-child {
+  margin-bottom: 0;
 }
 
 .adset-group-card:hover {
@@ -1695,6 +1713,7 @@ body {
   color: var(--text-dim);
   transition: transform 0.2s ease;
   flex-shrink: 0;
+  transform: rotate(0deg);
 }
 
 .adset-group-card.is-collapsed .adset-chevron-icon {
@@ -1787,16 +1806,20 @@ body {
 }
 
 .adset-group-body {
+  display: block;
+  width: 100%;
   overflow-x: auto;
+  background: #090c13;
 }
 
 .adset-group-card.is-collapsed .adset-group-body {
-  display: none;
+  display: none !important;
 }
 
 /* Ads sub-table inside AdSet */
 .adset-ads-table {
   width: 100%;
+  min-width: 860px;
   border-collapse: collapse;
 }
 
@@ -1807,9 +1830,10 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 8px 12px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border-subtle);
   user-select: none;
+  white-space: nowrap;
 }
 
 .adset-ads-table th.sortable-th {

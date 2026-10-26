@@ -1393,6 +1393,7 @@ window.openClientAdsModal = async function(accountId) {
     state.adsModal.sortColumn = "cpl";
     state.adsModal.sortDirection = "desc";
   }
+  state.adsModal.defaultCollapsed = null;
   state.adsModal.collapsedAdsets = {};
 
   const client = state.clientsData.find(c => c.id === accountId) || state.allAdAccounts.find(a => a.id === accountId) || { id: accountId, name: accountId };
@@ -1458,15 +1459,17 @@ window.openClientAdsModal = async function(accountId) {
   renderClientAdsModalContent(accountId);
 };
 
-window.toggleAdsetCollapse = function(adsetId) {
-  const card = document.getElementById(`adset-group-${adsetId}`);
+window.toggleAdsetCollapse = function(safeId) {
+  const card = document.getElementById(safeId);
   if (card) {
     card.classList.toggle("is-collapsed");
-    state.adsModal.collapsedAdsets[adsetId] = card.classList.contains("is-collapsed");
+    state.adsModal.collapsedAdsets[safeId] = card.classList.contains("is-collapsed");
   }
 };
 
 window.setAllAdsetsCollapsed = function(collapsed) {
+  state.adsModal.defaultCollapsed = collapsed;
+  state.adsModal.collapsedAdsets = {};
   const cards = document.querySelectorAll(".adset-group-card");
   cards.forEach(card => {
     const id = card.dataset.adsetId;
@@ -1697,8 +1700,18 @@ function renderClientAdsModalContent(accountId) {
 
   // Render AdSets with clean, emoji-free modern layout
   DOM.clientAdsGroupedContainer.innerHTML = groups.map(group => {
-    const isCollapsed = !!state.adsModal.collapsedAdsets[group.id];
-    const safeId = escapeHtml(group.id);
+    const safeId = "adset_" + String(group.id || "unassigned").replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    let isCollapsed;
+    if (state.adsModal.collapsedAdsets[safeId] !== undefined) {
+      isCollapsed = state.adsModal.collapsedAdsets[safeId];
+    } else if (state.adsModal.defaultCollapsed !== null && state.adsModal.defaultCollapsed !== undefined) {
+      isCollapsed = state.adsModal.defaultCollapsed;
+    } else if (filterMode === "danger") {
+      isCollapsed = !group.hasDanger;
+    } else {
+      isCollapsed = true; // Show AdSet division first!
+    }
 
     const adsRows = group.ads.map(ad => {
       const isActive = ad.status === "ACTIVE" || ad.effective_status === "ACTIVE";
@@ -1712,7 +1725,7 @@ function renderClientAdsModalContent(accountId) {
 
       return `
         <tr class="${isOver ? 'ad-row-danger' : ''}">
-          <td>
+          <td style="width: 32%; min-width: 220px;">
             <div class="ad-cell-main">
               <a href="${adManagerLink}" target="_blank" rel="noopener noreferrer" class="ad-name-title" title="Apri inserzione in Meta Ads Manager">
                 <span>${escapeHtml(ad.name)}</span>
@@ -1725,7 +1738,7 @@ function renderClientAdsModalContent(accountId) {
               ${isOver ? `<span class="ad-threshold-alert-tag">Costo sopra la soglia (€ ${clientThreshold.toFixed(2)})</span>` : ""}
             </div>
           </td>
-          <td class="text-center">
+          <td class="text-center" style="width: 140px;">
             <div class="ad-status-action-wrap">
               <span class="ad-status-pill ${isActive ? 'is-active' : 'is-paused'}">
                 <span class="status-dot"></span>
@@ -1738,22 +1751,22 @@ function renderClientAdsModalContent(accountId) {
               </button>
             </div>
           </td>
-          <td class="text-right val-mono">${formatCurrency(ad.spend || 0, currency)}</td>
-          <td class="text-right val-mono ${ad.totalLeads > 0 ? 'text-emerald' : ''}">${formatNumber(ad.totalLeads || 0)}</td>
-          <td class="text-right">
+          <td class="text-right val-mono" style="width: 100px;">${formatCurrency(ad.spend || 0, currency)}</td>
+          <td class="text-right val-mono ${ad.totalLeads > 0 ? 'text-emerald' : ''}" style="width: 80px;">${formatNumber(ad.totalLeads || 0)}</td>
+          <td class="text-right" style="width: 120px;">
             <span class="${cplClass}">
               ${ad.totalLeads > 0 ? formatCurrency(ad.cpl, currency) : (ad.spend >= clientThreshold ? '0 Lead (Sopra Soglia)' : '-')}
             </span>
           </td>
-          <td class="text-right val-mono">${(ad.ctr || 0).toFixed(2)}%</td>
-          <td class="text-right val-mono">${formatCurrency(ad.cpc || 0, currency)}</td>
-          <td class="text-right val-mono">${formatNumber(ad.impressions || 0)}</td>
+          <td class="text-right val-mono" style="width: 80px;">${(ad.ctr || 0).toFixed(2)}%</td>
+          <td class="text-right val-mono" style="width: 80px;">${formatCurrency(ad.cpc || 0, currency)}</td>
+          <td class="text-right val-mono" style="width: 100px;">${formatNumber(ad.impressions || 0)}</td>
         </tr>
       `;
     }).join("");
 
     return `
-      <div class="adset-group-card ${group.hasDanger ? 'has-danger-ads' : ''} ${isCollapsed ? 'is-collapsed' : ''}" id="adset-group-${safeId}" data-adset-id="${safeId}">
+      <div class="adset-group-card ${group.hasDanger ? 'has-danger-ads' : ''} ${isCollapsed ? 'is-collapsed' : ''}" id="${safeId}" data-adset-id="${safeId}">
         <div class="adset-group-header" onclick="toggleAdsetCollapse('${safeId}')">
           <div class="adset-header-left">
             <svg class="adset-chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1794,28 +1807,28 @@ function renderClientAdsModalContent(accountId) {
           <table class="adset-ads-table">
             <thead>
               <tr>
-                <th class="sortable-th ${sortCol === 'name' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('name')">
+                <th class="sortable-th ${sortCol === 'name' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('name')" style="width: 32%; min-width: 220px;">
                   Inserzione <span class="sort-arrow-icon">${sortCol === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                 </th>
-                <th class="sortable-th text-center ${sortCol === 'status' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('status')">
+                <th class="sortable-th text-center ${sortCol === 'status' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('status')" style="width: 140px;">
                   Stato <span class="sort-arrow-icon">${sortCol === 'status' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                 </th>
-                <th class="sortable-th text-right ${sortCol === 'spend' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('spend')">
+                <th class="sortable-th text-right ${sortCol === 'spend' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('spend')" style="width: 100px;">
                   Spesa <span class="sort-arrow-icon">${sortCol === 'spend' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                 </th>
-                <th class="sortable-th text-right ${sortCol === 'leads' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('leads')">
+                <th class="sortable-th text-right ${sortCol === 'leads' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('leads')" style="width: 80px;">
                   Lead <span class="sort-arrow-icon">${sortCol === 'leads' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                 </th>
-                <th class="sortable-th text-right ${sortCol === 'cpl' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('cpl')">
+                <th class="sortable-th text-right ${sortCol === 'cpl' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('cpl')" style="width: 120px;">
                   CPL <span class="sort-arrow-icon">${sortCol === 'cpl' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                 </th>
-                <th class="sortable-th text-right ${sortCol === 'ctr' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('ctr')">
+                <th class="sortable-th text-right ${sortCol === 'ctr' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('ctr')" style="width: 80px;">
                   CTR <span class="sort-arrow-icon">${sortCol === 'ctr' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                 </th>
-                <th class="sortable-th text-right ${sortCol === 'cpc' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('cpc')">
+                <th class="sortable-th text-right ${sortCol === 'cpc' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('cpc')" style="width: 80px;">
                   CPC <span class="sort-arrow-icon">${sortCol === 'cpc' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                 </th>
-                <th class="sortable-th text-right ${sortCol === 'impressions' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('impressions')">
+                <th class="sortable-th text-right ${sortCol === 'impressions' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('impressions')" style="width: 100px;">
                   Impression <span class="sort-arrow-icon">${sortCol === 'impressions' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                 </th>
               </tr>
