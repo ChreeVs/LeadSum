@@ -904,15 +904,24 @@ async function fetchLiveInsightsSummary(accountId, query = {}, accessToken = tok
     graph(`/${accountId}/campaigns`, {
       fields: "id,name,status,effective_status,objective,daily_budget,lifetime_budget,budget_remaining,buying_type,created_time,updated_time",
       limit: "200"
-    }, accessToken),
+    }, accessToken).catch(err => {
+      console.warn(`Campaigns fetch notice for ${accountId}:`, err.message);
+      return { data: [] };
+    }),
     graph(`/${accountId}/adsets`, {
       fields: "id,name,status,effective_status,campaign_id,daily_budget,lifetime_budget,budget_remaining,optimization_goal,billing_event,bid_amount,created_time,updated_time",
       limit: "250"
-    }, accessToken),
+    }, accessToken).catch(err => {
+      console.warn(`Adsets fetch notice for ${accountId}:`, err.message);
+      return { data: [] };
+    }),
     graph(`/${accountId}/ads`, {
-      fields: "id,name,status,effective_status,campaign_id,adset_id,creative{id,name,title,body,image_url,thumbnail_url,object_story_id,instagram_permalink_url},created_time,updated_time",
+      fields: "id,name,status,effective_status,campaign_id,adset_id,created_time,updated_time",
       limit: "300"
-    }, accessToken)
+    }, accessToken).catch(err => {
+      console.warn(`Ads fetch notice for ${accountId}:`, err.message);
+      return { data: [] };
+    })
   ]);
 
   const campaigns = campaignsRes.data || [];
@@ -1076,9 +1085,36 @@ async function fetchLiveInsightsSummary(accountId, query = {}, accessToken = tok
       clicks: metrics.clicks,
       ctr: metrics.ctr,
       cpc: metrics.cpc,
-      cpm: metrics.cpm,
-      creative: ad.creative || null
+      cpm: metrics.cpm
     };
+  });
+
+  const adIdSet = new Set(ads.map(a => a.id));
+  (adInsightsRes.data || []).forEach(row => {
+    if (row.ad_id && !adIdSet.has(row.ad_id)) {
+      const metrics = parseInsightsMetrics(row);
+      const parentCamp = campaignMap.get(row.campaign_id);
+      const parentAdset = adsetMap.get(row.adset_id);
+      enrichedAds.push({
+        id: row.ad_id,
+        name: row.ad_name || `Inserzione ${row.ad_id}`,
+        campaign_id: row.campaign_id,
+        campaign_name: parentCamp?.name || row.campaign_name || row.campaign_id,
+        adset_id: row.adset_id,
+        adset_name: parentAdset?.name || row.adset_name || row.adset_id,
+        adsManagerUrl: `https://www.facebook.com/adsmanager/manage/ads?act=${numericActId}&selected_ad_ids=${row.ad_id}`,
+        status: "PAUSED",
+        effective_status: "PAUSED",
+        spend: metrics.spend,
+        totalLeads: metrics.totalLeads,
+        cpl: metrics.cpl,
+        impressions: metrics.impressions,
+        clicks: metrics.clicks,
+        ctr: metrics.ctr,
+        cpc: metrics.cpc,
+        cpm: metrics.cpm
+      });
+    }
   });
 
 
@@ -1236,16 +1272,17 @@ async function applyRuleToCreatedAds(accountId, ruleId, adIds) {
 async function handleApi(req, res, url) {
   try {
     const userToken = extractTokenFromReq(req);
+    const effectiveToken = userToken || token();
 
     // Auth 1: Validate session / Get user profile
     if (url.pathname === "/api/auth/me") {
       const appId = getEnv("META_APP_ID", "1487594375621582");
-      if (!userToken) {
+      if (!effectiveToken) {
         return json(res, 200, { authenticated: false, appId });
       }
 
       try {
-        const userRes = await graph("/me", { fields: "id,name,picture{url}" }, userToken);
+        const userRes = await graph("/me", { fields: "id,name,picture{url}" }, effectiveToken);
         return json(res, 200, {
           authenticated: true,
           appId,
@@ -1344,7 +1381,7 @@ async function handleApi(req, res, url) {
       const threshold = parseFloat(url.searchParams.get("threshold") || "15.00");
 
       let targetAccounts = [];
-      const allAccs = await listAdAccounts(userToken).catch(() => []);
+      const allAccs = await listAdAccounts(effectiveToken).catch(() => []);
       if (accountIdsParam && accountIdsParam !== "none") {
         const ids = accountIdsParam.split(",").map(s => s.trim()).filter(Boolean);
         targetAccounts = allAccs.filter(a => ids.includes(a.id));
@@ -1352,7 +1389,7 @@ async function handleApi(req, res, url) {
         targetAccounts = allAccs;
       }
 
-      if (!userToken) {
+      if (!effectiveToken) {
         return json(res, 401, {
           error: "Sessione non autenticata. Effettua prima l'accesso con Facebook.",
           requiresAuth: true
@@ -1448,25 +1485,25 @@ async function handleApi(req, res, url) {
               ...timeParams,
               fields: "spend,actions",
               limit: "5"
-            }, userToken).catch(() => ({ data: [] })),
+            }, effectiveToken).catch(() => ({ data: [] })),
 
             graph(`/${acc.id}/campaigns`, {
               fields: "id,name,status,effective_status,daily_budget,lifetime_budget",
               effective_status: "['ACTIVE']",
               limit: "100"
-            }, userToken).catch(() => ({ data: [] })),
+            }, effectiveToken).catch(() => ({ data: [] })),
 
             graph(`/${acc.id}/adsets`, {
               fields: "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget",
               effective_status: "['ACTIVE']",
               limit: "150"
-            }, userToken).catch(() => ({ data: [] })),
+            }, effectiveToken).catch(() => ({ data: [] })),
 
             graph(`/${acc.id}/ads`, {
               fields: "id,name,campaign_id,adset_id,status,effective_status",
               effective_status: "['ACTIVE']",
               limit: "250"
-            }, userToken).catch(() => ({ data: [] }))
+            }, effectiveToken).catch(() => ({ data: [] }))
           ]);
 
           const parsed = parseInsightsMetrics(insightsRes.data?.[0] || {});
@@ -1543,18 +1580,25 @@ async function handleApi(req, res, url) {
       const since = url.searchParams.get("since");
       const until = url.searchParams.get("until");
 
-      if (accountId.startsWith("act_demo") || accountId === "demo" || !token()) {
+      // Only return demo mock data for explicit demo accounts
+      if (accountId.startsWith("act_demo") || accountId === "demo") {
         return json(res, 200, getDemoInsightsData(datePreset));
       }
 
+      if (!effectiveToken) {
+        return json(res, 401, {
+          error: "Sessione Meta non autenticata. Effettua l'accesso con Facebook o inserisci un Access Token valido."
+        });
+      }
+
       try {
-        const summary = await fetchLiveInsightsSummary(accountId, { datePreset, since, until }, userToken);
+        const summary = await fetchLiveInsightsSummary(accountId, { datePreset, since, until }, effectiveToken);
         return json(res, 200, summary);
       } catch (error) {
-        console.warn("Live insights error, returning fallback demo data:", error.message);
-        const demoData = getDemoInsightsData(datePreset);
-        demoData.liveError = error.message;
-        return json(res, 200, demoData);
+        console.error(`Errore caricamento dati reali da Meta per ${accountId}:`, error.message);
+        return json(res, 500, {
+          error: `Errore caricamento inserzioni reali da Meta per ${accountId}: ${error.message}`
+        });
       }
     }
 
@@ -1718,7 +1762,7 @@ async function handleApi(req, res, url) {
       return json(res, 200, {
         apiVersion: API_VERSION,
         loginConfigId: getEnv("META_LOGIN_CONFIG_ID", null),
-        hasToken: Boolean(userToken),
+        hasToken: Boolean(effectiveToken),
         ...configuredSources(),
         adAccounts,
         adAccountsError
@@ -1731,26 +1775,26 @@ async function handleApi(req, res, url) {
     }
 
     if (url.pathname === "/api/meta/adaccounts") {
-      return json(res, 200, { data: await listAdAccounts() });
+      return json(res, 200, { data: await listAdAccounts(effectiveToken) });
     }
 
     if (url.pathname === "/api/meta/campaigns") {
       const accountId = url.searchParams.get("accountId");
-      if (!accountId || accountId.startsWith("act_demo") || !token()) {
+      if (!accountId || accountId.startsWith("act_demo") || !effectiveToken) {
         const demo = getDemoInsightsData("last_7d");
         return json(res, 200, { data: demo.campaigns });
       }
       const payload = await graph(`/${accountId}/campaigns`, {
         fields: "id,name,status,effective_status,objective,created_time,updated_time",
         limit: "100"
-      });
+      }, effectiveToken);
       return json(res, 200, payload);
     }
 
     if (url.pathname === "/api/meta/adsets") {
       const accountId = url.searchParams.get("accountId");
       const campaignId = url.searchParams.get("campaignId");
-      if (!accountId || accountId.startsWith("act_demo") || !token()) {
+      if (!accountId || accountId.startsWith("act_demo") || !effectiveToken) {
         const demo = getDemoInsightsData("last_7d");
         let sets = demo.adsets;
         if (campaignId) sets = sets.filter(s => s.campaign_id === campaignId);
@@ -1761,19 +1805,19 @@ async function handleApi(req, res, url) {
         fields: "id,name,status,effective_status,campaign_id,daily_budget,lifetime_budget,billing_event,optimization_goal",
         filtering,
         limit: "100"
-      });
+      }, effectiveToken);
       return json(res, 200, payload);
     }
 
     if (url.pathname === "/api/meta/rules") {
       const accountId = url.searchParams.get("accountId");
-      if (!accountId || accountId.startsWith("act_demo") || !token()) {
+      if (!accountId || accountId.startsWith("act_demo") || !effectiveToken) {
         return json(res, 200, { data: [] });
       }
       const payload = await graph(`/${accountId}/adrules_library`, {
         fields: "id,name,evaluation_spec,execution_spec,schedule_spec,status,created_time,updated_time",
         limit: "100"
-      });
+      }, effectiveToken);
       return json(res, 200, payload);
     }
 

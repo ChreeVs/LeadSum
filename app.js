@@ -954,6 +954,11 @@ window.toggleClientExpand = async function(accountId) {
   state.expandedAccountId = accountId;
   renderClientsTable();
 
+  // If detail in cache is demo data but account is real, invalidate
+  if (state.expandedDetailsCache[accountId]?.isDemo && !accountId.startsWith("act_demo")) {
+    delete state.expandedDetailsCache[accountId];
+  }
+
   // If detail not in cache, fetch it
   if (!state.expandedDetailsCache[accountId]) {
     try {
@@ -1314,6 +1319,10 @@ window.openDetailedClientReport = async function(accountId) {
   }
 
   let detail = state.expandedDetailsCache[accountId];
+  if (detail && detail.isDemo && !accountId.startsWith("act_demo")) {
+    detail = null;
+    delete state.expandedDetailsCache[accountId];
+  }
   if (!detail) {
     if (DOM.clientReportLoading) DOM.clientReportLoading.style.display = "flex";
     if (DOM.clientDetailedReportTextOutput) DOM.clientDetailedReportTextOutput.value = "";
@@ -1398,6 +1407,10 @@ window.openClientAdsModal = async function(accountId) {
   }
 
   let detail = state.expandedDetailsCache[accountId];
+  if (detail && detail.isDemo && !accountId.startsWith("act_demo")) {
+    detail = null;
+    delete state.expandedDetailsCache[accountId];
+  }
   if (!detail || !detail.ads) {
     if (DOM.clientAdsLoading) DOM.clientAdsLoading.style.display = "flex";
     if (DOM.clientAdsTableBody) DOM.clientAdsTableBody.innerHTML = "";
