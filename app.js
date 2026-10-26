@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
   VISIBLE_ACCOUNTS: "leadsum_visible_accounts_v2",
   CLIENT_ORDER: "leadsum_client_order_v2",
   COST_THRESHOLD: "leadsum_cost_threshold_v2",
+  CLIENT_THRESHOLDS: "leadsum_client_thresholds_v2",
   DATE_PRESET: "leadsum_date_preset_v2",
   CUSTOM_SINCE: "leadsum_custom_since_v2",
   CUSTOM_UNTIL: "leadsum_custom_until_v2",
@@ -24,6 +25,7 @@ const state = {
   allAdAccounts: [],
   visibleAccountIds: JSON.parse(localStorage.getItem(STORAGE_KEYS.VISIBLE_ACCOUNTS) || "null"),
   clientOrder: JSON.parse(localStorage.getItem(STORAGE_KEYS.CLIENT_ORDER) || "[]"),
+  clientThresholds: JSON.parse(localStorage.getItem(STORAGE_KEYS.CLIENT_THRESHOLDS) || "{}"),
   datePreset: localStorage.getItem(STORAGE_KEYS.DATE_PRESET) || "yesterday",
   customSince: localStorage.getItem(STORAGE_KEYS.CUSTOM_SINCE) || "",
   customUntil: localStorage.getItem(STORAGE_KEYS.CUSTOM_UNTIL) || "",
@@ -95,12 +97,54 @@ const DOM = {
   modalSelectedCount: document.querySelector("#modalSelectedCount"),
   btnSaveAccountSelection: document.querySelector("#btnSaveAccountSelection"),
 
-  // Modal Report
+  // Modal Report (Riepilogo globale)
   modalReport: document.querySelector("#modalReport"),
   btnCloseReportModal: document.querySelector("#btnCloseReportModal"),
   reportTextOutput: document.querySelector("#reportTextOutput"),
   reportCopyFeedback: document.querySelector("#reportCopyFeedback"),
-  btnCopyReportText: document.querySelector("#btnCopyReportText")
+  btnCopyReportText: document.querySelector("#btnCopyReportText"),
+
+  // Modal Report Dettagliato Singolo Cliente (WhatsApp)
+  modalClientDetailedReport: document.querySelector("#modalClientDetailedReport"),
+  btnCloseClientDetailedReportModal: document.querySelector("#btnCloseClientDetailedReportModal"),
+  clientDetailedReportBadge: document.querySelector("#clientDetailedReportBadge"),
+  clientReportMetaPills: document.querySelector("#clientReportMetaPills"),
+  clientReportLoading: document.querySelector("#clientReportLoading"),
+  clientDetailedReportTextOutput: document.querySelector("#clientDetailedReportTextOutput"),
+  clientReportCopyFeedback: document.querySelector("#clientReportCopyFeedback"),
+  btnCopyClientDetailedReportText: document.querySelector("#btnCopyClientDetailedReportText"),
+  btnOpenInWhatsApp: document.querySelector("#btnOpenInWhatsApp")
+};
+
+// Utilities & Threshold helpers
+function getClientThreshold(accountId) {
+  if (state.clientThresholds && state.clientThresholds[accountId] !== undefined && state.clientThresholds[accountId] !== null && state.clientThresholds[accountId] !== "") {
+    const val = parseFloat(state.clientThresholds[accountId]);
+    if (!isNaN(val) && val > 0) return val;
+  }
+  return state.costThreshold;
+}
+
+window.setClientCustomThreshold = function(accountId, value) {
+  const parsed = parseFloat(value);
+  if (!state.clientThresholds) state.clientThresholds = {};
+  if (!isNaN(parsed) && parsed > 0) {
+    state.clientThresholds[accountId] = parsed;
+  } else {
+    delete state.clientThresholds[accountId];
+  }
+  localStorage.setItem(STORAGE_KEYS.CLIENT_THRESHOLDS, JSON.stringify(state.clientThresholds));
+  renderTotalsBar(state.clientsData);
+  renderClientsTable();
+};
+
+window.resetClientCustomThreshold = function(accountId) {
+  if (state.clientThresholds) {
+    delete state.clientThresholds[accountId];
+    localStorage.setItem(STORAGE_KEYS.CLIENT_THRESHOLDS, JSON.stringify(state.clientThresholds));
+  }
+  renderTotalsBar(state.clientsData);
+  renderClientsTable();
 };
 
 // Utilities
@@ -535,7 +579,11 @@ function renderTotalsBar(clients = []) {
   const totalLeads = clients.reduce((sum, c) => sum + (c.totalLeads || 0), 0);
   const totalSpend = clients.reduce((sum, c) => sum + (c.spend || 0), 0);
   const totalBudget = clients.reduce((sum, c) => sum + (c.dailyBudget || 0), 0);
-  const totalAlerts = clients.reduce((sum, c) => sum + (c.alertAdsCount || 0), 0);
+  const totalAlerts = clients.reduce((sum, c) => {
+    const thresh = getClientThreshold(c.id);
+    const isOver = (c.totalLeads > 0 && c.cpl > thresh) || (c.totalLeads === 0 && c.spend >= thresh);
+    return sum + (isOver || (c.alertAdsCount > 0) ? 1 : 0);
+  }, 0);
   const avgCpl = totalLeads > 0 ? totalSpend / totalLeads : 0;
 
   if (DOM.totalLeadsVal) DOM.totalLeadsVal.textContent = formatNumber(totalLeads);
@@ -624,12 +672,14 @@ function renderClientsTable() {
 
   const rowsHtml = list.map(client => {
     const isExpanded = state.expandedAccountId === client.id;
+    const clientThreshold = getClientThreshold(client.id);
+    const hasCustomThreshold = state.clientThresholds && state.clientThresholds[client.id] !== undefined && state.clientThresholds[client.id] !== null && state.clientThresholds[client.id] !== "";
+    const isOverThreshold = (client.totalLeads > 0 && client.cpl > clientThreshold) || (client.totalLeads === 0 && client.spend >= clientThreshold);
     const hasAlerts = client.alertAdsCount > 0;
-    const isOverThreshold = (client.totalLeads > 0 && client.cpl > state.costThreshold) || (client.totalLeads === 0 && client.spend >= state.costThreshold);
 
     const cplClass = client.totalLeads === 0
       ? "cpl-tag tag-zero"
-      : (client.cpl > state.costThreshold ? "cpl-tag tag-danger" : "cpl-tag tag-ok");
+      : (client.cpl > clientThreshold ? "cpl-tag tag-danger" : "cpl-tag tag-ok");
 
     const campaignSubText = state.onlyActiveCampaigns
       ? `${client.activeCampaignsCount} campagne attive`
@@ -657,14 +707,37 @@ function renderClientsTable() {
         <td class="text-right">
           <span class="val-mono text-blue">${client.dailyBudget > 0 ? formatCurrency(client.dailyBudget, client.currency) : "-"}</span>
         </td>
-        <td class="text-center">
-          ${hasAlerts
-            ? `<span class="alert-badge badge-danger">⚠️ ${client.alertAdsCount} sopra soglia</span>`
-            : `<span class="alert-badge badge-ok">✓ In soglia</span>`
-          }
+        <td class="text-center" onclick="event.stopPropagation()">
+          <div class="threshold-cell-wrap">
+            <div class="threshold-input-pill ${hasCustomThreshold ? 'is-custom' : ''}">
+              <span class="currency-sym">€</span>
+              <input type="number" step="0.5" min="0"
+                     class="inline-threshold-input"
+                     value="${hasCustomThreshold ? clientThreshold : ''}"
+                     placeholder="${state.costThreshold.toFixed(2)}"
+                     title="Soglia CPL personalizzata per ${client.name}. Lascia vuoto per usare quella globale (€${state.costThreshold.toFixed(2)})"
+                     onchange="setClientCustomThreshold('${client.id}', this.value)"
+              />
+              ${hasCustomThreshold ? `<button class="btn-clear-threshold" type="button" title="Ripristina soglia globale (€${state.costThreshold.toFixed(2)})" onclick="event.stopPropagation(); resetClientCustomThreshold('${client.id}')">✕</button>` : ''}
+            </div>
+            <div class="threshold-status-wrap">
+              ${isOverThreshold
+                ? `<span class="alert-badge badge-danger" title="${client.totalLeads > 0 ? `CPL €${client.cpl.toFixed(2)} > Soglia €${clientThreshold.toFixed(2)}` : `Spesa €${client.spend.toFixed(2)} senza lead > Soglia €${clientThreshold.toFixed(2)}`}">⚠️ Superata</span>`
+                : `<span class="alert-badge badge-ok" title="Performance entro la soglia di €${clientThreshold.toFixed(2)}">✓ In soglia</span>`
+              }
+            </div>
+          </div>
         </td>
-        <td class="text-center">
-          <span class="expand-chevron">▼</span>
+        <td class="text-center actions-cell" onclick="event.stopPropagation()">
+          <button class="btn btn-report-client" type="button" onclick="event.stopPropagation(); openDetailedClientReport('${client.id}')" title="Genera report dettagliato delle campagne attive pronto per WhatsApp">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+            </svg>
+            <span>Report dettagliato</span>
+          </button>
+          <button class="btn-expand-chevron" type="button" onclick="event.stopPropagation(); toggleClientExpand('${client.id}')" title="Espandi/Riduci dettagli inline">
+            <span class="expand-chevron">▼</span>
+          </button>
         </td>
       </tr>
       ${isExpanded ? renderExpandedDetailRow(client) : ""}
@@ -691,6 +764,7 @@ function renderExpandedDetailRow(client) {
   }
 
   const { campaigns = [], ads = [] } = detail;
+  const clientThreshold = getClientThreshold(client.id);
   
   // Apply only active filter if checked
   const filteredCampaigns = state.onlyActiveCampaigns
@@ -701,7 +775,7 @@ function renderExpandedDetailRow(client) {
     ? ads.filter(a => a.status === "ACTIVE" || a.effective_status === "ACTIVE")
     : ads;
 
-  const criticalAds = filteredAds.filter(ad => (ad.totalLeads > 0 && ad.cpl > state.costThreshold) || (ad.totalLeads === 0 && ad.spend >= state.costThreshold));
+  const criticalAds = filteredAds.filter(ad => (ad.totalLeads > 0 && ad.cpl > clientThreshold) || (ad.totalLeads === 0 && ad.spend >= clientThreshold));
 
   return `
     <tr class="detail-row">
@@ -712,7 +786,7 @@ function renderExpandedDetailRow(client) {
           ${criticalAds.length > 0 ? `
             <div>
               <div class="detail-section-title" style="color: var(--color-rose);">
-                <span>⚠️ Inserzioni Sopra Soglia (€ ${state.costThreshold.toFixed(2)})</span>
+                <span>⚠️ Inserzioni Sopra Soglia (€ ${clientThreshold.toFixed(2)})</span>
                 <span class="badge" style="background: var(--color-rose); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 0.72rem;">${criticalAds.length} critiche</span>
               </div>
               <table class="sub-table" style="margin-top: 8px;">
@@ -757,7 +831,7 @@ function renderExpandedDetailRow(client) {
             </div>
           ` : `
             <div style="padding: 10px; background: rgba(16,185,129,0.06); border-radius: 6px; border: 1px solid rgba(16,185,129,0.2); font-size: 0.82rem; color: var(--color-emerald);">
-              ✨ Ottimo! Nessuna inserzione ${state.onlyActiveCampaigns ? "attiva" : ""} di questo cliente supera la soglia di € ${state.costThreshold.toFixed(2)}.
+              ✨ Ottimo! Nessuna inserzione ${state.onlyActiveCampaigns ? "attiva" : ""} di questo cliente supera la soglia di € ${clientThreshold.toFixed(2)}.
             </div>
           `}
 
@@ -904,6 +978,14 @@ function renderAccountsCheckboxList() {
             <span class="account-item-id">${a.id}</span>
           </div>
         </label>
+        <div class="account-threshold-box" title="Soglia CPL personalizzata per questo cliente (€)" onclick="event.stopPropagation()">
+          <span>Soglia: €</span>
+          <input type="number" step="0.5" min="0" class="account-threshold-field"
+                 value="${state.clientThresholds && state.clientThresholds[a.id] !== undefined ? state.clientThresholds[a.id] : ''}"
+                 placeholder="${state.costThreshold.toFixed(2)}"
+                 onchange="setClientCustomThreshold('${a.id}', this.value)"
+          />
+        </div>
         <div class="account-reorder-actions">
           <button type="button" class="btn-reorder-move" onclick="moveAccountOrder('${a.id}', -1)" title="Sposta Su" ${isFirst ? "disabled" : ""}>▲</button>
           <button type="button" class="btn-reorder-move" onclick="moveAccountOrder('${a.id}', 1)" title="Sposta Giù" ${isLast ? "disabled" : ""}>▼</button>
@@ -1018,7 +1100,11 @@ function openReportModal() {
 
   const clientsLines = orderedClients
     .filter(c => c.spend > 0 || c.totalLeads > 0 || (c.dailyBudget || 0) > 0)
-    .map(c => `• *${c.name}*: ${c.totalLeads} lead | Spesa: ${formatCurrency(c.spend)} | CPL: ${c.totalLeads > 0 ? formatCurrency(c.cpl) : "-"} | Budget: ${formatCurrency(c.dailyBudget)}/gg${c.alertAdsCount > 0 ? ` (⚠️ ${c.alertAdsCount} > soglia)` : ""}`)
+    .map(c => {
+      const thresh = getClientThreshold(c.id);
+      const isOver = (c.totalLeads > 0 && c.cpl > thresh) || (c.totalLeads === 0 && c.spend >= thresh);
+      return `• *${c.name}*: ${c.totalLeads} lead | Spesa: ${formatCurrency(c.spend)} | CPL: ${c.totalLeads > 0 ? formatCurrency(c.cpl) : "-"} | Budget: ${formatCurrency(c.dailyBudget)}/gg${isOver || c.alertAdsCount > 0 ? ` (⚠️ > soglia €${thresh.toFixed(2)})` : ""}`;
+    })
     .join("\n");
 
   const reportText = `📊 *RIASSUNTO CLIENTI META ADS - ${dateLabel}*
@@ -1033,6 +1119,197 @@ _Generato con LeadSum_`;
   if (DOM.reportCopyFeedback) DOM.reportCopyFeedback.textContent = "";
   DOM.modalReport?.showModal();
 }
+
+/* ==========================================================================
+   Detailed Client Report Generator (Formatted for WhatsApp)
+   ========================================================================== */
+
+function translateObjective(objective) {
+  switch (objective) {
+    case "OUTCOME_LEADS": return "🎯 Lead Generation (Contatti)";
+    case "OUTCOME_ENGAGEMENT": return "💬 Interazioni & WhatsApp";
+    case "OUTCOME_SALES": return "🛍️ Vendite / Conversioni";
+    case "OUTCOME_TRAFFIC": return "🚀 Traffico al Sito";
+    case "OUTCOME_AWARENESS": return "📢 Notorietà del Brand";
+    case "MESSAGES": return "💬 Messaggi WhatsApp / Direct";
+    default: return objective || "Generazione Lead";
+  }
+}
+
+function buildDetailedClientWhatsAppReport(client, detail) {
+  const currency = client.currency || detail.account?.currency || "EUR";
+  const clientThreshold = getClientThreshold(client.id);
+  const dateLabel = getPresetLabel(state.datePreset).toUpperCase();
+  const now = new Date();
+  const nowDate = now.toLocaleDateString("it-IT");
+  const nowTime = now.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+
+  const kpis = detail.kpis || {};
+  const campaigns = detail.campaigns || [];
+  const leadBreakdown = detail.leadBreakdown || {};
+
+  // Filter active campaigns
+  const activeCampaigns = campaigns.filter(c => c.status === "ACTIVE" || c.effective_status === "ACTIVE");
+
+  const totalLeads = kpis.totalLeads !== undefined ? kpis.totalLeads : (client.totalLeads || 0);
+  const totalSpend = kpis.totalSpend !== undefined ? kpis.totalSpend : (client.spend || 0);
+  const avgCpl = totalLeads > 0 ? (kpis.averageCpl !== undefined ? kpis.averageCpl : (client.cpl || 0)) : 0;
+  const totalDailyBudget = kpis.totalDailyBudget !== undefined ? kpis.totalDailyBudget : (client.dailyBudget || 0);
+
+  const isAccountOverThreshold = (totalLeads > 0 && avgCpl > clientThreshold) || (totalLeads === 0 && totalSpend >= clientThreshold);
+
+  // Breakdown of lead sources
+  const leadSources = [];
+  if ((leadBreakdown.formLeads || 0) > 0) leadSources.push(`  • Moduli Contatti Facebook: *${leadBreakdown.formLeads}*`);
+  if ((leadBreakdown.pixelLeads || 0) > 0) leadSources.push(`  • Conversioni Sito Web (Pixel): *${leadBreakdown.pixelLeads}*`);
+  if ((leadBreakdown.messagingLeads || 0) > 0) leadSources.push(`  • Conversazioni WhatsApp / Direct: *${leadBreakdown.messagingLeads}*`);
+
+  // Active campaigns section
+  let campaignsSection = "";
+  if (activeCampaigns.length === 0) {
+    campaignsSection = `⚠️ _Nessuna campagna attualmente con stato ATTIVO trovata per questo account nel periodo selezionato._\n`;
+    if (campaigns.length > 0) {
+      campaignsSection += `(Trovate ${campaigns.length} campagne in pausa o completate nel periodo)\n`;
+    }
+  } else {
+    campaignsSection = activeCampaigns.map((c, idx) => {
+      const isCampOver = (c.totalLeads > 0 && c.cpl > clientThreshold) || (c.totalLeads === 0 && c.spend >= clientThreshold);
+      const campStatusTag = isCampOver 
+        ? `⚠️ *SOPRA SOGLIA* (Soglia: ${formatCurrency(clientThreshold, currency)})` 
+        : `✅ *In Soglia*`;
+
+      const campLeadTypes = [];
+      if ((c.formLeads || 0) > 0) campLeadTypes.push(`Moduli: ${c.formLeads}`);
+      if ((c.pixelLeads || 0) > 0) campLeadTypes.push(`Pixel: ${c.pixelLeads}`);
+      if ((c.messagingLeads || 0) > 0) campLeadTypes.push(`WhatsApp: ${c.messagingLeads}`);
+
+      const todayText = (c.todaySpend > 0 || c.todayLeads > 0)
+        ? `\n  • ⚡ *Oggi (Realtime):* ${formatCurrency(c.todaySpend, currency)} spesi | *${c.todayLeads} lead* ${c.todayLeads > 0 ? `(CPL oggi: ${formatCurrency(c.todayCpl, currency)})` : ""}`
+        : "";
+
+      return `📌 *${idx + 1}. ${c.name}*
+  • Stato: 🟢 *ATTIVA*
+  • Obiettivo: *${translateObjective(c.objective)}*
+  • Tipo Budget: *${c.budgetType || "Standard"}* ${c.dailyBudgetVal > 0 ? `(${formatCurrency(c.dailyBudgetVal, currency)}/gg)` : ""}
+  • 💶 Spesa nel Periodo: *${formatCurrency(c.spend, currency)}*
+  • 👥 Lead Generati: *${c.totalLeads} contatti* ${campLeadTypes.length > 0 ? `(${campLeadTypes.join(", ")})` : ""}
+  • 🎯 Costo per Lead (CPL): *${c.totalLeads > 0 ? formatCurrency(c.cpl, currency) : "-"}* ➔ ${campStatusTag}
+  • 📈 Metriche Traffico: *${formatNumber(c.clicks)} click* (CTR: *${(c.ctr || 0).toFixed(2)}%* | CPC: *${formatCurrency(c.cpc || 0, currency)}*)
+  • 👁️ Impression: *${formatNumber(c.impressions)}* (CPM: *${formatCurrency(c.cpm || 0, currency)}*)${todayText}`;
+    }).join("\n\n────────────────────────\n\n");
+  }
+
+  // Health diagnosis & assessment
+  let healthEvaluation = "";
+  const overCount = activeCampaigns.filter(c => (c.totalLeads > 0 && c.cpl > clientThreshold) || (c.totalLeads === 0 && c.spend >= clientThreshold)).length;
+  if (activeCampaigns.length === 0) {
+    healthEvaluation = `ℹ️ *Stato:* Nessuna campagna attiva da valutare al momento.`;
+  } else if (overCount === 0) {
+    healthEvaluation = `✅ *Ottimo andamento:* Tutte le ${activeCampaigns.length} campagne attive stanno convertendo in modo efficiente e si mantengono al di sotto della soglia stabilita di *${formatCurrency(clientThreshold, currency)}*.`;
+  } else {
+    healthEvaluation = `⚠️ *Attenzione richiesta:* Ci sono *${overCount} su ${activeCampaigns.length} campagne attive* con costo superiore alla soglia target di *${formatCurrency(clientThreshold, currency)}*. Si consiglia di verificare creativi, frequenza o segmenti di pubblico.`;
+  }
+
+  return `📊 *REPORT DETTAGLIATO CAMPAGNE ATTIVE*
+🏢 *Cliente:* *${client.name}*
+📅 *Periodo Analizzato:* *${dateLabel}*
+⏱️ *Generato il:* ${nowDate} alle ${nowTime}
+━━━━━━━━━━━━━━━━━━━━
+
+📈 *PANORAMICA ACCOUNT:*
+• 💶 Spesa Totale Periodo: *${formatCurrency(totalSpend, currency)}*
+• 👥 Lead Totali Raccolti: *${formatNumber(totalLeads)} contatti*
+• 🎯 Costo Medio / Lead (CPL): *${totalLeads > 0 ? formatCurrency(avgCpl, currency) : "-"}*
+• ⏱️ Budget Giornaliero Attivo: *${formatCurrency(totalDailyBudget, currency)}/gg*
+• 🎯 Soglia CPL Riferimento: *${formatCurrency(clientThreshold, currency)}* ${isAccountOverThreshold ? "*(⚠️ SUPERATA)*" : "*(✅ IN SOGLIA)*"}
+${(kpis.todaySpend > 0) ? `• ⚡ Spesa di Oggi (Realtime): *${formatCurrency(kpis.todaySpend, currency)}*` : ""}
+${leadSources.length > 0 ? `\n👥 *FONTI DEI CONTATTI:*\n${leadSources.join("\n")}\n` : ""}
+📊 *COPERTURA & ENGAGEMENT ACCOUNT:*
+• 👁️ Impression: *${formatNumber(kpis.impressions || 0)}*
+• 👤 Copertura (Reach): *${formatNumber(kpis.reach || 0)} persone*
+• 🔄 Frequenza media: *${(kpis.frequency || 1).toFixed(2)}*
+• 🖱️ Click totali: *${formatNumber(kpis.clicks || 0)}* (CTR: *${(kpis.ctr || 0).toFixed(2)}%* | CPC: *${formatCurrency(kpis.cpc || 0, currency)}*)
+
+━━━━━━━━━━━━━━━━━━━━
+🎯 *CAMPAGNE ATTIVE IN CORSO (${activeCampaigns.length}):*
+━━━━━━━━━━━━━━━━━━━━
+
+${campaignsSection}
+
+━━━━━━━━━━━━━━━━━━━━
+💡 *VALUTAZIONE SINTETICA & STATO SALUTE:*
+${healthEvaluation}
+━━━━━━━━━━━━━━━━━━━━
+_Generato con LeadSum Meta Intelligence_`;
+}
+
+window.openDetailedClientReport = async function(accountId) {
+  const client = state.clientsData.find(c => c.id === accountId) || state.allAdAccounts.find(a => a.id === accountId);
+  if (!client) return;
+
+  if (DOM.clientDetailedReportBadge) {
+    DOM.clientDetailedReportBadge.textContent = client.name;
+  }
+
+  if (DOM.clientReportCopyFeedback) {
+    DOM.clientReportCopyFeedback.textContent = "";
+  }
+
+  if (DOM.modalClientDetailedReport) {
+    DOM.modalClientDetailedReport.showModal();
+  }
+
+  let detail = state.expandedDetailsCache[accountId];
+  if (!detail) {
+    if (DOM.clientReportLoading) DOM.clientReportLoading.style.display = "flex";
+    if (DOM.clientDetailedReportTextOutput) DOM.clientDetailedReportTextOutput.value = "";
+    if (DOM.clientReportMetaPills) DOM.clientReportMetaPills.innerHTML = "";
+
+    try {
+      const params = new URLSearchParams({
+        accountId,
+        datePreset: state.datePreset
+      });
+      if (state.datePreset === "custom" && state.customSince && state.customUntil) {
+        params.set("since", state.customSince);
+        params.set("until", state.customUntil);
+      }
+      detail = await api(`/api/meta/insights/summary?${params.toString()}`);
+      state.expandedDetailsCache[accountId] = detail;
+    } catch (err) {
+      if (DOM.clientDetailedReportTextOutput) {
+        DOM.clientDetailedReportTextOutput.value = `⚠️ Errore nel recupero dei dettagli delle campagne: ${err.message}`;
+      }
+      if (DOM.clientReportLoading) DOM.clientReportLoading.style.display = "none";
+      return;
+    }
+  }
+
+  if (DOM.clientReportLoading) DOM.clientReportLoading.style.display = "none";
+
+  const reportText = buildDetailedClientWhatsAppReport(client, detail);
+  if (DOM.clientDetailedReportTextOutput) {
+    DOM.clientDetailedReportTextOutput.value = reportText;
+  }
+
+  // Populate Meta Pills Header
+  if (DOM.clientReportMetaPills) {
+    const clientThreshold = getClientThreshold(client.id);
+    const kpis = detail.kpis || {};
+    const totalLeads = kpis.totalLeads !== undefined ? kpis.totalLeads : (client.totalLeads || 0);
+    const spend = kpis.totalSpend !== undefined ? kpis.totalSpend : (client.spend || 0);
+    const cpl = totalLeads > 0 ? (kpis.averageCpl !== undefined ? kpis.averageCpl : (client.cpl || 0)) : 0;
+    const isOver = (totalLeads > 0 && cpl > clientThreshold) || (totalLeads === 0 && spend >= clientThreshold);
+
+    DOM.clientReportMetaPills.innerHTML = `
+      <span class="report-meta-pill">📅 Periodo: <strong>${getPresetLabel(state.datePreset)}</strong></span>
+      <span class="report-meta-pill">💶 Spesa: <strong>${formatCurrency(spend, client.currency)}</strong></span>
+      <span class="report-meta-pill">👥 Lead: <strong>${totalLeads}</strong></span>
+      <span class="report-meta-pill ${isOver ? "is-danger" : "is-ok"}">🎯 CPL: <strong>${totalLeads > 0 ? formatCurrency(cpl, client.currency) : "-"}</strong></span>
+      <span class="report-meta-pill ${isOver ? "is-danger" : "is-ok"}">⚠️ Soglia: <strong>€ ${clientThreshold.toFixed(2)}</strong> (${isOver ? "Superata" : "In soglia"})</span>
+    `;
+  }
+};
 
 /* ==========================================================================
    Event Bindings
@@ -1144,7 +1421,7 @@ function bindEvents() {
 
   DOM.btnSaveAccountSelection?.addEventListener("click", saveAccountSelection);
 
-  // Report Modal
+  // Global Multi-Client Report Modal
   DOM.btnOpenReportModal?.addEventListener("click", openReportModal);
   DOM.btnCloseReportModal?.addEventListener("click", () => DOM.modalReport?.close());
 
@@ -1155,6 +1432,26 @@ function bindEvents() {
       setTimeout(() => {
         if (DOM.reportCopyFeedback) DOM.reportCopyFeedback.textContent = "";
       }, 2500);
+    }
+  });
+
+  // Detailed Single Client Report Modal (WhatsApp)
+  DOM.btnCloseClientDetailedReportModal?.addEventListener("click", () => DOM.modalClientDetailedReport?.close());
+
+  DOM.btnCopyClientDetailedReportText?.addEventListener("click", async () => {
+    if (DOM.clientDetailedReportTextOutput && DOM.clientDetailedReportTextOutput.value) {
+      await navigator.clipboard.writeText(DOM.clientDetailedReportTextOutput.value);
+      if (DOM.clientReportCopyFeedback) DOM.clientReportCopyFeedback.textContent = "✅ Testo pronto per WhatsApp copiato!";
+      setTimeout(() => {
+        if (DOM.clientReportCopyFeedback) DOM.clientReportCopyFeedback.textContent = "";
+      }, 2500);
+    }
+  });
+
+  DOM.btnOpenInWhatsApp?.addEventListener("click", () => {
+    if (DOM.clientDetailedReportTextOutput && DOM.clientDetailedReportTextOutput.value) {
+      const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(DOM.clientDetailedReportTextOutput.value)}`;
+      window.open(waUrl, "_blank");
     }
   });
 

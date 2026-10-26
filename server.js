@@ -1344,18 +1344,92 @@ async function handleApi(req, res, url) {
       const threshold = parseFloat(url.searchParams.get("threshold") || "15.00");
 
       let targetAccounts = [];
-      if (accountIdsParam) {
+      const allAccs = await listAdAccounts(userToken).catch(() => []);
+      if (accountIdsParam && accountIdsParam !== "none") {
         const ids = accountIdsParam.split(",").map(s => s.trim()).filter(Boolean);
-        const allAccs = await listAdAccounts(userToken).catch(() => []);
         targetAccounts = allAccs.filter(a => ids.includes(a.id));
       } else {
-        targetAccounts = await listAdAccounts(userToken).catch(() => []);
+        targetAccounts = allAccs;
       }
 
       if (!userToken) {
         return json(res, 401, {
           error: "Sessione non autenticata. Effettua prima l'accesso con Facebook.",
           requiresAuth: true
+        });
+      }
+
+      if (targetAccounts.length === 0) {
+        return json(res, 200, {
+          isDemo: true,
+          datePreset,
+          since: since || null,
+          until: until || null,
+          clients: [
+            {
+              id: "act_demo_101",
+              account_id: "demo_101",
+              name: "Immobiliare Prestigio & Sviluppo",
+              currency: "EUR",
+              activeCampaignsCount: 2,
+              totalCampaignsCount: 3,
+              totalLeads: 68,
+              formLeads: 58,
+              messagingLeads: 0,
+              pixelLeads: 10,
+              spend: 312.40,
+              cpl: 4.59,
+              dailyBudget: 60.00,
+              cboBudget: 60.00,
+              aboBudget: 0,
+              impressions: 18500,
+              clicks: 540,
+              ctr: 2.92,
+              alertAdsCount: 0
+            },
+            {
+              id: "act_demo_102",
+              account_id: "demo_102",
+              name: "Studio Odontoiatrico Dott. Rossi",
+              currency: "EUR",
+              activeCampaignsCount: 1,
+              totalCampaignsCount: 2,
+              totalLeads: 32,
+              formLeads: 0,
+              messagingLeads: 32,
+              pixelLeads: 0,
+              spend: 198.60,
+              cpl: 6.20,
+              dailyBudget: 40.00,
+              cboBudget: 0,
+              aboBudget: 40.00,
+              impressions: 12400,
+              clicks: 390,
+              ctr: 3.15,
+              alertAdsCount: 0
+            },
+            {
+              id: "act_demo_103",
+              account_id: "demo_103",
+              name: "Fitness Club & Wellness Spa",
+              currency: "EUR",
+              activeCampaignsCount: 2,
+              totalCampaignsCount: 2,
+              totalLeads: 12,
+              formLeads: 12,
+              messagingLeads: 0,
+              pixelLeads: 0,
+              spend: 264.00,
+              cpl: 22.00,
+              dailyBudget: 50.00,
+              cboBudget: 50.00,
+              aboBudget: 0,
+              impressions: 9800,
+              clicks: 210,
+              ctr: 2.14,
+              alertAdsCount: 1
+            }
+          ]
         });
       }
 
@@ -1609,11 +1683,31 @@ async function handleApi(req, res, url) {
         adAccounts = await listAdAccounts(userToken);
       } catch (error) {
         adAccountsError = error.message;
+      }
+      if (!adAccounts || adAccounts.length === 0) {
         adAccounts = [
           {
-            id: "act_demo_123456789",
-            account_id: "demo_123456789",
-            name: "Account Demo - Lead Intelligence",
+            id: "act_demo_101",
+            account_id: "demo_101",
+            name: "Immobiliare Prestigio & Sviluppo",
+            account_status: 1,
+            currency: "EUR",
+            timezone_name: "Europe/Rome",
+            isDemo: true
+          },
+          {
+            id: "act_demo_102",
+            account_id: "demo_102",
+            name: "Studio Odontoiatrico Dott. Rossi",
+            account_status: 1,
+            currency: "EUR",
+            timezone_name: "Europe/Rome",
+            isDemo: true
+          },
+          {
+            id: "act_demo_103",
+            account_id: "demo_103",
+            name: "Fitness Club & Wellness Spa",
             account_status: 1,
             currency: "EUR",
             timezone_name: "Europe/Rome",

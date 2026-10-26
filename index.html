@@ -203,9 +203,11 @@
                   <span class="sort-icon">↕</span>
                 </th>
                 <th class="text-center">
-                  <span>SOGLIA (ALERT)</span>
+                  <span>SOGLIA CPL</span>
                 </th>
-                <th class="text-center" style="width: 40px;"></th>
+                <th class="text-center" style="min-width: 175px;">
+                  <span>AZIONI</span>
+                </th>
               </tr>
             </thead>
             <tbody id="clientsTableBody">
@@ -233,7 +235,7 @@
           <h3>⚙️ Gestione & Ordinamento Clienti</h3>
           <button class="modal-close-btn" id="btnCloseAccountsModal" type="button">✕</button>
         </div>
-        <p class="modal-sub">Seleziona quali account visualizzare e imposta l'ordine personalizzato trascinandoli (⠿) o con le frecce ▲/▼. L'ordine viene applicato alla tabella e al report.</p>
+        <p class="modal-sub">Seleziona quali account visualizzare, personalizza la soglia CPL (€) per ciascun cliente e imposta l'ordine trascinandoli (⠿) o con le frecce ▲/▼.</p>
         
         <div class="accounts-modal-search">
           <input id="accountModalSearchInput" type="search" placeholder="Filtra account per nome..." autocomplete="off">
@@ -275,6 +277,52 @@
             </svg>
             <span>Copia negli Appunti</span>
           </button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- MODAL: REPORT DETTAGLIATO CLIENTE PER WHATSAPP -->
+    <dialog class="modal" id="modalClientDetailedReport">
+      <div class="modal-box modal-box-wide">
+        <div class="modal-head">
+          <div class="modal-title-with-badge">
+            <h3>📊 Report Dettagliato WhatsApp</h3>
+            <span class="badge-client-target" id="clientDetailedReportBadge">Cliente</span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseClientDetailedReportModal" type="button">✕</button>
+        </div>
+        <p class="modal-sub">Report approfondito di tutte le <strong>campagne attive</strong> con metriche di conversione, traffico, budget e verifica della soglia. Perfetto da condividere via WhatsApp con il cliente o il team.</p>
+
+        <div class="report-meta-pills" id="clientReportMetaPills">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="report-loading-overlay" id="clientReportLoading" style="display: none;">
+          <div class="loading-spinner"></div>
+          <span>Elaborazione report dettagliato da Meta Ads in corso...</span>
+        </div>
+
+        <div class="report-textarea-wrap">
+          <textarea class="report-text report-text-detailed" id="clientDetailedReportTextOutput" rows="18" readonly></textarea>
+        </div>
+
+        <div class="modal-foot">
+          <span class="copy-hint" id="clientReportCopyFeedback"></span>
+          <div class="modal-foot-actions">
+            <button class="btn btn-secondary btn-whatsapp-direct" id="btnOpenInWhatsApp" type="button" title="Apri direttamente WhatsApp con il messaggio pronto">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+              </svg>
+              <span>Condividi su WhatsApp</span>
+            </button>
+            <button class="btn btn-primary" id="btnCopyClientDetailedReportText" type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span>Copia Testo per WhatsApp</span>
+            </button>
+          </div>
         </div>
       </div>
     </dialog>

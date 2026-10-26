@@ -467,7 +467,17 @@ body {
 }
 
 .client-row.row-danger {
-  border-left: 3px solid var(--color-rose);
+  background: rgba(244, 63, 94, 0.08) !important;
+  border-left: 4px solid var(--color-rose) !important;
+  box-shadow: inset 0 0 15px rgba(244, 63, 94, 0.04);
+}
+
+.client-row.row-danger:hover {
+  background: rgba(244, 63, 94, 0.14) !important;
+}
+
+.client-row.row-danger .client-name {
+  color: #ffa4b2;
 }
 
 .client-row.row-expanded {
@@ -1128,3 +1138,271 @@ body {
   color: var(--color-emerald);
   font-weight: 600;
 }
+
+/* ==========================================================================
+   Threshold Controls (Inline & Modal)
+   ========================================================================== */
+
+.threshold-cell-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.threshold-input-pill {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  transition: all 0.15s ease;
+}
+
+.threshold-input-pill:focus-within {
+  border-color: var(--color-indigo);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.threshold-input-pill.is-custom {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.threshold-input-pill .currency-sym {
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  font-weight: 700;
+  margin-right: 3px;
+  user-select: none;
+}
+
+.threshold-input-pill.is-custom .currency-sym {
+  color: var(--color-amber);
+}
+
+.inline-threshold-input {
+  width: 54px;
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+  outline: none;
+  text-align: right;
+}
+
+.inline-threshold-input::placeholder {
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+.btn-clear-threshold {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  padding: 0 2px;
+  margin-left: 2px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+  line-height: 1;
+}
+
+.btn-clear-threshold:hover {
+  color: var(--color-rose);
+}
+
+/* Threshold field in Accounts Order Modal */
+.account-threshold-box {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.account-threshold-field {
+  width: 48px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+  outline: none;
+  text-align: right;
+}
+
+.account-threshold-field::placeholder {
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+/* ==========================================================================
+   Actions Column & Detailed Report Button
+   ========================================================================== */
+
+.actions-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-report-client {
+  background: linear-gradient(135deg, rgba(37, 211, 102, 0.15), rgba(16, 185, 129, 0.15));
+  border: 1px solid rgba(37, 211, 102, 0.35);
+  color: #4ade80;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-report-client:hover {
+  background: linear-gradient(135deg, rgba(37, 211, 102, 0.28), rgba(16, 185, 129, 0.28));
+  border-color: #25d366;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 211, 102, 0.25);
+}
+
+.btn-report-client:active {
+  transform: translateY(0);
+}
+
+.btn-expand-chevron {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 5px 7px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-expand-chevron:hover {
+  background: var(--bg-surface-raised);
+  color: #fff;
+  border-color: var(--border-active);
+}
+
+/* ==========================================================================
+   Detailed Client Report Modal (WhatsApp)
+   ========================================================================== */
+
+.modal-box-wide {
+  max-width: 680px;
+  width: 95%;
+}
+
+.modal-title-with-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.badge-client-target {
+  background: rgba(99, 102, 241, 0.18);
+  color: var(--color-blue);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.report-meta-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+}
+
+.report-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+}
+
+.report-meta-pill strong {
+  color: #ffffff;
+  font-family: var(--font-mono);
+}
+
+.report-meta-pill.is-danger strong {
+  color: var(--color-rose);
+}
+
+.report-meta-pill.is-ok strong {
+  color: var(--color-emerald);
+}
+
+.report-loading-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 30px;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.report-textarea-wrap {
+  width: 100%;
+}
+
+.report-text-detailed {
+  height: 380px;
+  line-height: 1.5;
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  background: #090b10;
+  border: 1px solid var(--border-active);
+  color: #e2e8f0;
+  white-space: pre-wrap;
+}
+
+.modal-foot-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-whatsapp-direct {
+  background: #25d366;
+  border-color: #25d366;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.btn-whatsapp-direct:hover {
+  background: #20bd5a;
+  border-color: #20bd5a;
+  box-shadow: 0 4px 14px rgba(37, 211, 102, 0.35);
+  color: #ffffff;
+}
+
