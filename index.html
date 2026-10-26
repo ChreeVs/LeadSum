@@ -327,6 +327,74 @@
       </div>
     </dialog>
 
+    <!-- MODAL: DETTAGLI INSERZIONI PER CLIENTE -->
+    <dialog class="modal" id="modalClientAdsDetails">
+      <div class="modal-box modal-box-extra-wide">
+        <div class="modal-head">
+          <div class="modal-title-with-badge">
+            <h3>🎯 Dettaglio Inserzioni: <span id="clientAdsModalClientName">Cliente</span></h3>
+            <span class="badge-client-target" id="clientAdsModalThresholdBadge">Soglia CPL: € 15.00</span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseClientAdsModal" type="button">✕</button>
+        </div>
+        <p class="modal-sub">
+          Monitora tutte le singole inserzioni del cliente, controlla le metriche di spesa, lead e CPL. Puoi mettere in pausa o attivare ciascuna inserzione in tempo reale. Le inserzioni che superano la soglia personalizzata sono evidenziate in rosso.
+        </p>
+
+        <!-- KPI Summary Bar for Ads -->
+        <div class="ads-modal-kpi-bar" id="clientAdsKpiBar">
+          <!-- Populated by JS -->
+        </div>
+
+        <!-- Toolbar: Search & Filters -->
+        <div class="ads-modal-toolbar">
+          <div class="search-input-wrap">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input id="clientAdsSearchInput" type="search" placeholder="Filtra inserzioni per nome o campagna..." autocomplete="off">
+          </div>
+          <div class="ads-filter-pills">
+            <button type="button" class="ads-filter-btn active" data-filter="all" id="btnFilterAdsAll">Tutte (<span id="filterCountAll">0</span>)</button>
+            <button type="button" class="ads-filter-btn" data-filter="active" id="btnFilterAdsActive">Solo Attive (<span id="filterCountActive">0</span>)</button>
+            <button type="button" class="ads-filter-btn btn-filter-danger" data-filter="danger" id="btnFilterAdsDanger">⚠️ Sopra Soglia (<span id="filterCountDanger">0</span>)</button>
+          </div>
+        </div>
+
+        <div class="report-loading-overlay" id="clientAdsLoading" style="display: none;">
+          <div class="loading-spinner"></div>
+          <span>Caricamento inserzioni da Meta Ads in corso...</span>
+        </div>
+
+        <!-- Ads Table Container -->
+        <div class="ads-table-responsive" id="clientAdsTableWrap">
+          <table class="sub-table ads-full-table">
+            <thead>
+              <tr>
+                <th>Inserzione & Campagna</th>
+                <th class="text-center" style="width: 140px;">Stato / Azione</th>
+                <th class="text-right">Spesa</th>
+                <th class="text-right">Lead</th>
+                <th class="text-right">CPL</th>
+                <th class="text-right">CTR</th>
+                <th class="text-right">CPC</th>
+                <th class="text-right">Impression</th>
+              </tr>
+            </thead>
+            <tbody id="clientAdsTableBody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="modal-foot">
+          <span id="clientAdsFooterCount" style="color: var(--text-dim); font-size: 0.82rem;">0 inserzioni</span>
+          <button class="btn btn-secondary" id="btnCloseClientAdsModalFooter" type="button">Chiudi</button>
+        </div>
+      </div>
+    </dialog>
+
     <script src="app.js"></script>
   </body>
 </html>

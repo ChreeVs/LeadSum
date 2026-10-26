@@ -37,6 +37,11 @@ const state = {
   sortDirection: "asc",
   expandedAccountId: null,
   expandedDetailsCache: {},
+  adsModal: {
+    accountId: null,
+    filter: "all",
+    search: ""
+  },
   loading: false
 };
 
@@ -113,7 +118,23 @@ const DOM = {
   clientDetailedReportTextOutput: document.querySelector("#clientDetailedReportTextOutput"),
   clientReportCopyFeedback: document.querySelector("#clientReportCopyFeedback"),
   btnCopyClientDetailedReportText: document.querySelector("#btnCopyClientDetailedReportText"),
-  btnOpenInWhatsApp: document.querySelector("#btnOpenInWhatsApp")
+  btnOpenInWhatsApp: document.querySelector("#btnOpenInWhatsApp"),
+
+  // Modal Dettagli Inserzioni Singolo Cliente
+  modalClientAdsDetails: document.querySelector("#modalClientAdsDetails"),
+  btnCloseClientAdsModal: document.querySelector("#btnCloseClientAdsModal"),
+  btnCloseClientAdsModalFooter: document.querySelector("#btnCloseClientAdsModalFooter"),
+  clientAdsModalClientName: document.querySelector("#clientAdsModalClientName"),
+  clientAdsModalThresholdBadge: document.querySelector("#clientAdsModalThresholdBadge"),
+  clientAdsKpiBar: document.querySelector("#clientAdsKpiBar"),
+  clientAdsSearchInput: document.querySelector("#clientAdsSearchInput"),
+  clientAdsFilterButtons: document.querySelectorAll(".ads-filter-btn"),
+  clientAdsLoading: document.querySelector("#clientAdsLoading"),
+  clientAdsTableBody: document.querySelector("#clientAdsTableBody"),
+  clientAdsFooterCount: document.querySelector("#clientAdsFooterCount"),
+  filterCountAll: document.querySelector("#filterCountAll"),
+  filterCountActive: document.querySelector("#filterCountActive"),
+  filterCountDanger: document.querySelector("#filterCountDanger")
 };
 
 // Utilities & Threshold helpers
@@ -123,6 +144,19 @@ function getClientThreshold(accountId) {
     if (!isNaN(val) && val > 0) return val;
   }
   return state.costThreshold;
+}
+
+function hasClientAdsOverThreshold(client) {
+  const clientThreshold = getClientThreshold(client.id);
+  const detail = state.expandedDetailsCache[client.id];
+  if (detail?.ads?.length) {
+    return detail.ads.some(ad => {
+      const isActive = ad.status === "ACTIVE" || ad.effective_status === "ACTIVE";
+      if (!isActive) return false;
+      return (ad.totalLeads > 0 && ad.cpl > clientThreshold) || (ad.totalLeads === 0 && ad.spend >= clientThreshold);
+    });
+  }
+  return (client.alertAdsCount > 0) || (client.totalLeads > 0 && client.cpl > clientThreshold) || (client.totalLeads === 0 && client.spend >= clientThreshold);
 }
 
 window.setClientCustomThreshold = function(accountId, value) {
@@ -158,6 +192,15 @@ const formatNumber = (val = 0) => {
   const num = typeof val === "number" ? val : parseInt(val || 0, 10);
   return num.toLocaleString("it-IT");
 };
+
+function escapeHtml(str = "") {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
@@ -676,6 +719,7 @@ function renderClientsTable() {
     const hasCustomThreshold = state.clientThresholds && state.clientThresholds[client.id] !== undefined && state.clientThresholds[client.id] !== null && state.clientThresholds[client.id] !== "";
     const isOverThreshold = (client.totalLeads > 0 && client.cpl > clientThreshold) || (client.totalLeads === 0 && client.spend >= clientThreshold);
     const hasAlerts = client.alertAdsCount > 0;
+    const hasOverAds = hasClientAdsOverThreshold(client);
 
     const cplClass = client.totalLeads === 0
       ? "cpl-tag tag-zero"
@@ -686,7 +730,7 @@ function renderClientsTable() {
       : `${client.totalCampaignsCount || client.activeCampaignsCount} campagne totali`;
 
     return `
-      <tr class="client-row ${hasAlerts || isOverThreshold ? "row-danger" : ""} ${isExpanded ? "row-expanded" : ""}" onclick="toggleClientExpand('${client.id}')">
+      <tr class="client-row ${hasAlerts || isOverThreshold || hasOverAds ? "row-danger" : ""} ${isExpanded ? "row-expanded" : ""}" onclick="toggleClientExpand('${client.id}')">
         <td>
           <div class="cell-client">
             <span class="client-name">${client.name}</span>
@@ -729,12 +773,22 @@ function renderClientsTable() {
           </div>
         </td>
         <td class="text-center actions-cell" onclick="event.stopPropagation()">
-          <button class="btn btn-report-client" type="button" onclick="event.stopPropagation(); openDetailedClientReport('${client.id}')" title="Genera report dettagliato delle campagne attive pronto per WhatsApp">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-            </svg>
-            <span>Report dettagliato</span>
-          </button>
+          <div class="actions-buttons-stack">
+            <button class="btn btn-report-client" type="button" onclick="event.stopPropagation(); openDetailedClientReport('${client.id}')" title="Genera report dettagliato delle campagne attive pronto per WhatsApp">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+              </svg>
+              <span>Report dettagliato</span>
+            </button>
+            <button class="btn btn-ads-details ${hasOverAds ? 'btn-ads-danger' : 'btn-ads-normal'}" type="button" onclick="event.stopPropagation(); openClientAdsModal('${client.id}')" title="${hasOverAds ? '⚠️ Attenzione: alcune inserzioni superano la soglia di costo!' : 'Dettagli e gestione inserzioni del cliente'}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                <polyline points="2 17 12 22 22 17"></polyline>
+                <polyline points="2 12 12 17 22 12"></polyline>
+              </svg>
+              <span>${hasOverAds ? '⚠️ Dettagli Inserzioni' : 'Dettagli Inserzioni'}</span>
+            </button>
+          </div>
           <button class="btn-expand-chevron" type="button" onclick="event.stopPropagation(); toggleClientExpand('${client.id}')" title="Espandi/Riduci dettagli inline">
             <span class="expand-chevron">▼</span>
           </button>
@@ -1312,6 +1366,258 @@ window.openDetailedClientReport = async function(accountId) {
 };
 
 /* ==========================================================================
+   Client Ads Details Modal & Inline Ad Control
+   ========================================================================== */
+
+window.openClientAdsModal = async function(accountId) {
+  state.adsModal.accountId = accountId;
+  state.adsModal.filter = "all";
+  state.adsModal.search = "";
+
+  const client = state.clientsData.find(c => c.id === accountId) || state.allAdAccounts.find(a => a.id === accountId) || { id: accountId, name: accountId };
+  const clientThreshold = getClientThreshold(accountId);
+
+  if (DOM.clientAdsModalClientName) {
+    DOM.clientAdsModalClientName.textContent = client.name || accountId;
+  }
+  if (DOM.clientAdsModalThresholdBadge) {
+    DOM.clientAdsModalThresholdBadge.textContent = `Soglia CPL: € ${clientThreshold.toFixed(2)}`;
+  }
+  if (DOM.clientAdsSearchInput) {
+    DOM.clientAdsSearchInput.value = "";
+  }
+  if (DOM.clientAdsFilterButtons) {
+    DOM.clientAdsFilterButtons.forEach(btn => {
+      if (btn.dataset.filter === "all") btn.classList.add("active");
+      else btn.classList.remove("active");
+    });
+  }
+
+  if (DOM.modalClientAdsDetails) {
+    DOM.modalClientAdsDetails.showModal();
+  }
+
+  let detail = state.expandedDetailsCache[accountId];
+  if (!detail || !detail.ads) {
+    if (DOM.clientAdsLoading) DOM.clientAdsLoading.style.display = "flex";
+    if (DOM.clientAdsTableBody) DOM.clientAdsTableBody.innerHTML = "";
+
+    try {
+      const params = new URLSearchParams({
+        accountId,
+        datePreset: state.datePreset
+      });
+      if (state.datePreset === "custom" && state.customSince && state.customUntil) {
+        params.set("since", state.customSince);
+        params.set("until", state.customUntil);
+      }
+      detail = await api(`/api/meta/insights/summary?${params.toString()}`);
+      state.expandedDetailsCache[accountId] = detail;
+    } catch (err) {
+      if (DOM.clientAdsTableBody) {
+        DOM.clientAdsTableBody.innerHTML = `
+          <tr>
+            <td colspan="8" style="text-align: center; color: var(--color-rose); padding: 30px;">
+              ⚠️ Errore caricamento inserzioni: ${escapeHtml(err.message)}
+            </td>
+          </tr>
+        `;
+      }
+      if (DOM.clientAdsLoading) DOM.clientAdsLoading.style.display = "none";
+      return;
+    }
+  }
+
+  if (DOM.clientAdsLoading) DOM.clientAdsLoading.style.display = "none";
+  renderClientAdsModalContent(accountId);
+};
+
+function renderClientAdsModalContent(accountId) {
+  const client = state.clientsData.find(c => c.id === accountId) || state.allAdAccounts.find(a => a.id === accountId) || { id: accountId, name: accountId };
+  const detail = state.expandedDetailsCache[accountId] || {};
+  const ads = detail.ads || [];
+  const clientThreshold = getClientThreshold(accountId);
+  const currency = client.currency || detail.account?.currency || "EUR";
+
+  // Calculate statistics across all ads
+  const totalAds = ads.length;
+  const activeAds = ads.filter(a => a.status === "ACTIVE" || a.effective_status === "ACTIVE");
+  const dangerAds = activeAds.filter(a => (a.totalLeads > 0 && a.cpl > clientThreshold) || (a.totalLeads === 0 && a.spend >= clientThreshold));
+
+  const totalSpend = ads.reduce((sum, a) => sum + (a.spend || 0), 0);
+  const totalLeads = ads.reduce((sum, a) => sum + (a.totalLeads || 0), 0);
+  const avgCpl = totalLeads > 0 ? totalSpend / totalLeads : 0;
+  const totalClicks = ads.reduce((sum, a) => sum + (a.clicks || 0), 0);
+  const totalImpressions = ads.reduce((sum, a) => sum + (a.impressions || 0), 0);
+  const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+
+  // Update Filter Pill Counts
+  if (DOM.filterCountAll) DOM.filterCountAll.textContent = totalAds;
+  if (DOM.filterCountActive) DOM.filterCountActive.textContent = activeAds.length;
+  if (DOM.filterCountDanger) DOM.filterCountDanger.textContent = dangerAds.length;
+
+  // Render KPI Bar
+  if (DOM.clientAdsKpiBar) {
+    DOM.clientAdsKpiBar.innerHTML = `
+      <div class="ads-kpi-item">
+        <span class="ads-kpi-label">Spesa Inserzioni</span>
+        <span class="ads-kpi-val">${formatCurrency(totalSpend, currency)}</span>
+      </div>
+      <div class="ads-kpi-item">
+        <span class="ads-kpi-label">Lead Generati</span>
+        <span class="ads-kpi-val ${totalLeads > 0 ? 'text-success' : ''}">${formatNumber(totalLeads)}</span>
+      </div>
+      <div class="ads-kpi-item">
+        <span class="ads-kpi-label">CPL Medio</span>
+        <span class="ads-kpi-val ${totalLeads > 0 && avgCpl > clientThreshold ? 'text-danger' : 'text-success'}">
+          ${totalLeads > 0 ? formatCurrency(avgCpl, currency) : '-'}
+        </span>
+      </div>
+      <div class="ads-kpi-item">
+        <span class="ads-kpi-label">Sopra Soglia (€ ${clientThreshold.toFixed(2)})</span>
+        <span class="ads-kpi-val ${dangerAds.length > 0 ? 'text-danger' : 'text-success'}">${dangerAds.length} critiche</span>
+      </div>
+      <div class="ads-kpi-item">
+        <span class="ads-kpi-label">Attive / Totali</span>
+        <span class="ads-kpi-val">${activeAds.length} / ${totalAds}</span>
+      </div>
+      <div class="ads-kpi-item">
+        <span class="ads-kpi-label">CTR Medio</span>
+        <span class="ads-kpi-val">${avgCtr.toFixed(2)}%</span>
+      </div>
+    `;
+  }
+
+  // Filter Ads based on selected tab and search
+  let filtered = [...ads];
+  const filterMode = state.adsModal.filter || "all";
+  if (filterMode === "active") {
+    filtered = filtered.filter(a => a.status === "ACTIVE" || a.effective_status === "ACTIVE");
+  } else if (filterMode === "danger") {
+    filtered = filtered.filter(a => {
+      const isActive = a.status === "ACTIVE" || a.effective_status === "ACTIVE";
+      return isActive && ((a.totalLeads > 0 && a.cpl > clientThreshold) || (a.totalLeads === 0 && a.spend >= clientThreshold));
+    });
+  }
+
+  const search = (state.adsModal.search || "").toLowerCase().trim();
+  if (search) {
+    filtered = filtered.filter(a =>
+      (a.name || "").toLowerCase().includes(search) ||
+      (a.campaign_name || "").toLowerCase().includes(search) ||
+      (a.adset_name || "").toLowerCase().includes(search)
+    );
+  }
+
+  // Update Footer Count
+  if (DOM.clientAdsFooterCount) {
+    DOM.clientAdsFooterCount.textContent = `${filtered.length} di ${totalAds} inserzioni visualizzate (Filtro: ${filterMode === 'all' ? 'Tutte' : filterMode === 'active' ? 'Solo Attive' : 'Sopra Soglia'})`;
+  }
+
+  // Render Table
+  if (!DOM.clientAdsTableBody) return;
+
+  if (filtered.length === 0) {
+    DOM.clientAdsTableBody.innerHTML = `
+      <tr>
+        <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 40px;">
+          Nessuna inserzione trovata con i filtri attuali.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  DOM.clientAdsTableBody.innerHTML = filtered.map(ad => {
+    const isActive = ad.status === "ACTIVE" || ad.effective_status === "ACTIVE";
+    const isOver = isActive && ((ad.totalLeads > 0 && ad.cpl > clientThreshold) || (ad.totalLeads === 0 && ad.spend >= clientThreshold));
+
+    const cplClass = ad.totalLeads === 0
+      ? "cpl-tag tag-zero"
+      : (isOver ? "cpl-tag tag-danger" : "cpl-tag tag-ok");
+
+    const adManagerLink = ad.adsManagerUrl || `https://www.facebook.com/adsmanager/manage/ads?selected_ad_ids=${ad.id}`;
+
+    return `
+      <tr class="${isOver ? 'ad-row-danger' : ''}">
+        <td>
+          <div class="ad-cell-main">
+            <a href="${adManagerLink}" target="_blank" rel="noopener noreferrer" class="ad-name-title" title="Apri inserzione in Meta Ads Manager">
+              <span>${escapeHtml(ad.name)}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+            </a>
+            <div class="ad-parent-info">
+              📁 ${escapeHtml(ad.campaign_name || "Campagna")} ${ad.adset_name ? `• 🎯 ${escapeHtml(ad.adset_name)}` : ""}
+            </div>
+            ${isOver ? `<span style="color: var(--color-rose); font-size: 0.72rem; font-weight: 700;">⚠️ Costo sopra la soglia (€ ${clientThreshold.toFixed(2)})</span>` : ""}
+          </div>
+        </td>
+        <td class="text-center">
+          <div class="ad-status-action-wrap">
+            <span class="alert-badge ${isActive ? 'badge-ok' : 'badge-danger'}">
+              ${isActive ? '🟢 Attiva' : '⏸️ In Pausa'}
+            </span>
+            <button type="button" class="btn-toggle-ad-state ${isActive ? 'btn-pause-action' : 'btn-activate-action'}"
+                    onclick="event.stopPropagation(); toggleAdStatusInModal('${ad.id}', '${isActive ? 'PAUSED' : 'ACTIVE'}', '${accountId}')"
+                    title="${isActive ? 'Ferma questa inserzione su Meta' : 'Riattiva questa inserzione su Meta'}">
+              ${isActive ? '⏸️ Metti in Pausa' : '▶️ Attiva Inserzione'}
+            </button>
+          </div>
+        </td>
+        <td class="text-right val-mono">${formatCurrency(ad.spend || 0, currency)}</td>
+        <td class="text-right val-mono ${ad.totalLeads > 0 ? 'text-emerald' : ''}">${formatNumber(ad.totalLeads || 0)}</td>
+        <td class="text-right">
+          <span class="${cplClass}">
+            ${ad.totalLeads > 0 ? formatCurrency(ad.cpl, currency) : (ad.spend >= clientThreshold ? '⚠️ 0 Lead' : '-')}
+          </span>
+        </td>
+        <td class="text-right val-mono">${(ad.ctr || 0).toFixed(2)}%</td>
+        <td class="text-right val-mono">${formatCurrency(ad.cpc || 0, currency)}</td>
+        <td class="text-right val-mono">${formatNumber(ad.impressions || 0)}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+window.toggleAdStatusInModal = async function(adId, newStatus, accountId) {
+  const isPause = newStatus === "PAUSED";
+  const actionText = isPause ? "mettere in PAUSA" : "ATTIVARE";
+  if (!confirm(`Sei sicuro di voler ${actionText} questa inserzione su Meta Ads?`)) {
+    return;
+  }
+
+  try {
+    await api("/api/meta/ads/toggle-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ adId, status: newStatus })
+    });
+
+    // Update in cached details
+    if (state.expandedDetailsCache[accountId]?.ads) {
+      const ad = state.expandedDetailsCache[accountId].ads.find(a => a.id === adId);
+      if (ad) {
+        ad.status = newStatus;
+        ad.effective_status = newStatus;
+      }
+    }
+
+    // Refresh modal content immediately
+    renderClientAdsModalContent(accountId);
+
+    // Update client row & totals in the background
+    renderTotalsBar(state.clientsData);
+    renderClientsTable();
+  } catch (err) {
+    alert(`Errore cambio stato inserzione: ${err.message}`);
+  }
+};
+
+/* ==========================================================================
    Event Bindings
    ========================================================================== */
 
@@ -1453,6 +1759,28 @@ function bindEvents() {
       const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(DOM.clientDetailedReportTextOutput.value)}`;
       window.open(waUrl, "_blank");
     }
+  });
+
+  // Client Ads Details Modal Bindings
+  DOM.btnCloseClientAdsModal?.addEventListener("click", () => DOM.modalClientAdsDetails?.close());
+  DOM.btnCloseClientAdsModalFooter?.addEventListener("click", () => DOM.modalClientAdsDetails?.close());
+
+  DOM.clientAdsSearchInput?.addEventListener("input", (e) => {
+    state.adsModal.search = e.target.value.toLowerCase().trim();
+    if (state.adsModal.accountId) {
+      renderClientAdsModalContent(state.adsModal.accountId);
+    }
+  });
+
+  DOM.clientAdsFilterButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      DOM.clientAdsFilterButtons.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.adsModal.filter = btn.dataset.filter || "all";
+      if (state.adsModal.accountId) {
+        renderClientAdsModalContent(state.adsModal.accountId);
+      }
+    });
   });
 
   // Meta Auth Bindings
