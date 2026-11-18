@@ -5,6 +5,8 @@
   "description": "LeadSum - Meta Ads Lead & Campaign Performance Intelligence Dashboard",
   "main": "server.js",
   "scripts": {
+    "build": "node build-cf.js",
+    "lint": "node --check server.js && node --check worker.js && node --check app.js",
     "start": "node server.js",
     "check": "node --check server.js && node --check app.js"
   },

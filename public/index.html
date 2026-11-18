@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LeadSum - Meta Ads Lead & Campaign Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <!-- Meta Facebook Login Screen Overlay -->
+    <div id="loginScreen" class="login-overlay" style="display: none;">
+      <div class="login-card">
+        <div class="login-brand-icon">📊</div>
+        <h2 class="login-title">LeadSum</h2>
+        <p class="login-tag">Meta Ads Multi-Client Performance Intelligence</p>
+        
+        <div class="login-body">
+          <p class="login-info-text">
+            Effettua l'accesso con il tuo account Facebook per visualizzare i tuoi clienti, monitorare i contatti e analizzare le campagne attive.
+          </p>
+
+          <button class="btn btn-facebook-login" id="btnFacebookLogin" type="button">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+            </svg>
+            <span>Accedi con Facebook</span>
+          </button>
+
+          <button class="btn btn-quick-login" id="btnQuickLogin" type="button" title="Accedi istantaneamente usando il token configurato nel sistema">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            <span>⚡ Entra con Chiave di Sistema</span>
+          </button>
+
+          <div id="loginErrorMsg" class="login-error-alert" style="display: none;"></div>
+
+          <div class="manual-token-section">
+            <button class="btn-token-toggle" id="btnToggleManualToken" type="button">
+              <span>Oppure usa un Access Token manuale</span>
+              <span id="tokenChevron">▼</span>
+            </button>
+            <div id="manualTokenBox" class="manual-token-box" style="display: none;">
+              <input id="inputManualToken" type="password" placeholder="Incolla Access Token EAAV..." autocomplete="off">
+              <button id="btnSubmitManualToken" class="btn btn-secondary btn-sm" type="button">Connetti</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="login-card-foot">
+          <span>Protetto tramite Meta Marketing API v22.0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top Compact Header -->
+    <header class="top-nav" id="topNav">
+      <div class="top-nav-inner">
+        <div class="brand">
+          <span class="brand-logo">📊</span>
+          <div>
+            <h1 class="brand-name">LeadSum</h1>
+            <span class="brand-tag">Meta Ads Multi-Client Intelligence</span>
+          </div>
+        </div>
+
+        <!-- Date Presets & Custom Selector -->
+        <div class="date-controls">
+          <div class="date-pills-bar" role="radiogroup" aria-label="Selezione Periodo">
+            <button class="date-btn active" data-preset="yesterday" type="button">Ieri</button>
+            <button class="date-btn" data-preset="today" type="button">Oggi</button>
+            <button class="date-btn" data-preset="last_7d" type="button">Ultimi 7 gg</button>
+            <button class="date-btn" data-preset="this_month" type="button">Questo Mese</button>
+            <button class="date-btn" data-preset="last_month" type="button">Mese Scorso</button>
+            <button class="date-btn" data-preset="custom" type="button">📅 Personalizzato</button>
+          </div>
+
+          <!-- Custom Date Range Picker (Shown on 'Personalizzato') -->
+          <div class="custom-dates-wrap" id="customDatesWrap" style="display: none;">
+            <span>Dal:</span>
+            <input id="inputDateSince" type="date">
+            <span>Al:</span>
+            <input id="inputDateUntil" type="date">
+            <button class="btn btn-apply-date" id="btnApplyCustomDate" type="button">Applica</button>
+          </div>
+        </div>
+
+        <!-- Action Tools -->
+        <div class="header-actions">
+          <div class="threshold-pill-input">
+            <span class="th-label">Soglia Max:</span>
+            <span class="th-currency">€</span>
+            <input id="globalThresholdInput" type="number" min="1" max="1000" step="0.5" value="15.00" title="Imposta la soglia massima desiderata di costo per contatto">
+          </div>
+
+          <button class="btn btn-secondary" id="btnOpenAccountsModal" type="button" title="Scegli quali account e clienti visualizzare">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span id="btnAccountsCountText">Filtra Clienti (Tutti)</span>
+          </button>
+
+          <button class="btn btn-secondary" id="btnOpenReportModal" type="button" title="Genera report riassuntivo per WhatsApp / Slack">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+            <span>Report Veloce</span>
+          </button>
+
+          <button class="btn btn-primary" id="btnRefreshData" type="button" title="Ricarica dati da Meta">
+            <svg class="refresh-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            <span>Aggiorna</span>
+          </button>
+
+          <!-- User Profile & Logout -->
+          <div class="user-profile-badge" id="userProfileBadge" style="display: none;">
+            <img id="userProfileAvatar" class="user-avatar" src="" alt="Avatar" style="display: none;">
+            <span id="userProfileName" class="user-name">Utente</span>
+            <button id="btnLogout" class="btn-logout" type="button" title="Disconnetti account Meta">Esci</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <!-- Total Summary Stats Bar -->
+      <section class="totals-bar">
+        <div class="total-stat">
+          <span class="total-label">👥 Contatti Totali</span>
+          <strong class="total-val text-emerald" id="totalLeadsVal">0</strong>
+        </div>
+        <div class="total-stat">
+          <span class="total-label">💶 Spesa Totale Periodo</span>
+          <strong class="total-val" id="totalSpendVal">€ 0,00</strong>
+        </div>
+        <div class="total-stat">
+          <span class="total-label">🎯 Costo Medio / Lead (CPL)</span>
+          <strong class="total-val" id="totalCplVal">€ 0,00</strong>
+        </div>
+        <div class="total-stat">
+          <span class="total-label">⏱️ Budget Giornaliero Attivo</span>
+          <strong class="total-val text-blue" id="totalBudgetVal">€ 0,00/gg</strong>
+        </div>
+        <div class="total-stat">
+          <span class="total-label">Alert Inserzioni > Soglia</span>
+          <strong class="total-val text-rose" id="totalAlertsVal">0</strong>
+        </div>
+      </section>
+
+      <!-- Main Clients Overview Table -->
+      <section class="table-card">
+        <div class="table-header-bar">
+          <div class="table-title-wrap">
+            <h2 class="table-title">Panoramica Clienti & Campagne</h2>
+            <span class="table-subtitle" id="tableDateRangeSubtitle">Dati di: Ieri</span>
+          </div>
+          <div class="table-tools-right">
+            <label class="toggle-checkbox-wrap" title="Filtra per mostrare esclusivamente le campagne attualmente attive">
+              <input id="chkOnlyActiveCampaigns" type="checkbox" checked>
+              <span class="toggle-checkbox-label">Vedi solo campagne attive</span>
+            </label>
+            <div class="search-input-wrap">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input id="clientSearchInput" type="search" placeholder="Cerca cliente..." autocomplete="off">
+            </div>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="clients-table">
+            <thead>
+              <tr>
+                <th class="th-sortable" data-sort="name">
+                  <span>CLIENTE</span>
+                  <span class="sort-icon">↕</span>
+                </th>
+                <th class="th-sortable text-right" data-sort="leads">
+                  <span id="colHeaderLeads">LEAD (IERI)</span>
+                  <span class="sort-icon">↕</span>
+                </th>
+                <th class="th-sortable text-right" data-sort="spend">
+                  <span id="colHeaderSpend">SPESA (IERI)</span>
+                  <span class="sort-icon">↕</span>
+                </th>
+                <th class="th-sortable text-right" data-sort="cpl">
+                  <span>CPL</span>
+                  <span class="sort-icon">↕</span>
+                </th>
+                <th class="th-sortable text-right" data-sort="budget">
+                  <span>BUDGET GG</span>
+                  <span class="sort-icon">↕</span>
+                </th>
+                <th class="text-center">
+                  <span>SOGLIA CPL</span>
+                </th>
+                <th class="text-center" style="min-width: 175px;">
+                  <span>AZIONI</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="clientsTableBody">
+              <tr>
+                <td colspan="7" class="td-loading">
+                  <div class="loading-spinner"></div>
+                  <span>Caricamento dati da Meta Ads...</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-footer-info">
+          <span id="footerMetaStatus">Dati live da Meta API</span>
+          <span id="footerRowsCount">0 clienti mostrati</span>
+        </div>
+      </section>
+    </main>
+
+    <!-- MODAL: GESTIONE & ORDINAMENTO CLIENTI -->
+    <dialog class="modal" id="modalAccounts">
+      <div class="modal-box">
+        <div class="modal-head">
+          <h3>⚙️ Gestione & Ordinamento Clienti</h3>
+          <button class="modal-close-btn" id="btnCloseAccountsModal" type="button">✕</button>
+        </div>
+        <p class="modal-sub">Seleziona quali account visualizzare, personalizza la soglia CPL (€) per ciascun cliente e imposta l'ordine trascinandoli (⠿) o con le frecce ▲/▼.</p>
+        
+        <div class="accounts-modal-search">
+          <input id="accountModalSearchInput" type="search" placeholder="Filtra account per nome..." autocomplete="off">
+          <div class="modal-quick-actions">
+            <button class="btn btn-xs" id="btnSelectAllAccounts" type="button">Seleziona Tutti</button>
+            <button class="btn btn-xs" id="btnDeselectAllAccounts" type="button">Deseleziona Tutti</button>
+            <button class="btn btn-xs" id="btnResetAlphabeticalOrder" type="button" title="Ordina alfabeticamente A-Z">Ordina A-Z</button>
+          </div>
+        </div>
+
+        <div class="accounts-checkbox-list" id="accountsCheckboxList">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="modal-foot">
+          <span id="modalSelectedCount">0 account selezionati</span>
+          <button class="btn btn-primary" id="btnSaveAccountSelection" type="button">Salva ed Applica</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- MODAL: REPORT VELOCE PER WHATSAPP / SLACK -->
+    <dialog class="modal" id="modalReport">
+      <div class="modal-box">
+        <div class="modal-head">
+          <h3>📋 Report Riepilogativo Multi-Cliente</h3>
+          <button class="modal-close-btn" id="btnCloseReportModal" type="button">✕</button>
+        </div>
+        <p class="modal-sub">Riepilogo formattato con emoji pronto da incollare su WhatsApp, Slack, Telegram o Email per monitorare le performance di tutti i tuoi clienti.</p>
+
+        <textarea class="report-text" id="reportTextOutput" rows="14" readonly></textarea>
+
+        <div class="modal-foot">
+          <span class="copy-hint" id="reportCopyFeedback"></span>
+          <button class="btn btn-primary" id="btnCopyReportText" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>Copia negli Appunti</span>
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- MODAL: REPORT DETTAGLIATO CLIENTE PER WHATSAPP -->
+    <dialog class="modal" id="modalClientDetailedReport">
+      <div class="modal-box modal-box-wide">
+        <div class="modal-head">
+          <div class="modal-title-with-badge">
+            <h3>📊 Report Dettagliato WhatsApp</h3>
+            <span class="badge-client-target" id="clientDetailedReportBadge">Cliente</span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseClientDetailedReportModal" type="button">✕</button>
+        </div>
+        <p class="modal-sub">Report approfondito di tutte le <strong>campagne attive</strong> con metriche di conversione, traffico, budget e verifica della soglia. Perfetto da condividere via WhatsApp con il cliente o il team.</p>
+
+        <div class="report-meta-pills" id="clientReportMetaPills">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="report-loading-overlay" id="clientReportLoading" style="display: none;">
+          <div class="loading-spinner"></div>
+          <span>Elaborazione report dettagliato da Meta Ads in corso...</span>
+        </div>
+
+        <div class="report-textarea-wrap">
+          <textarea class="report-text report-text-detailed" id="clientDetailedReportTextOutput" rows="18" readonly></textarea>
+        </div>
+
+        <div class="modal-foot">
+          <span class="copy-hint" id="clientReportCopyFeedback"></span>
+          <div class="modal-foot-actions">
+            <button class="btn btn-secondary btn-whatsapp-direct" id="btnOpenInWhatsApp" type="button" title="Apri direttamente WhatsApp con il messaggio pronto">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+              </svg>
+              <span>Condividi su WhatsApp</span>
+            </button>
+            <button class="btn btn-primary" id="btnCopyClientDetailedReportText" type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span>Copia Testo per WhatsApp</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- MODAL: DETTAGLI INSERZIONI PER CLIENTE -->
+    <dialog class="modal" id="modalClientAdsDetails">
+      <div class="modal-box modal-box-extra-wide">
+        <div class="modal-head">
+          <div class="modal-title-with-badge">
+            <div class="modal-title-icon-clean">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="9" y1="21" x2="9" y2="9"></line>
+              </svg>
+            </div>
+            <h3>Dettaglio Inserzioni: <span id="clientAdsModalClientName">Cliente</span></h3>
+            <span class="badge-client-target" id="clientAdsModalThresholdBadge">Soglia CPL: € 15.00</span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseClientAdsModal" type="button" title="Chiudi">✕</button>
+        </div>
+        <p class="modal-sub">
+          Monitora le inserzioni suddivise per Gruppo di Inserzioni (AdSet). Controlla le metriche di spesa, lead e costo per risultato, ordina per CPL e metti in pausa o riattiva ogni inserzione in tempo reale.
+        </p>
+
+        <!-- KPI Summary Bar for Ads -->
+        <div class="ads-modal-kpi-bar" id="clientAdsKpiBar">
+          <!-- Populated by JS -->
+        </div>
+
+        <!-- Toolbar: Search, Filters, Sort & Group Controls -->
+        <div class="ads-modal-toolbar">
+          <div class="ads-toolbar-left">
+            <div class="search-input-wrap">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input id="clientAdsSearchInput" type="search" placeholder="Cerca inserzione, gruppo o campagna..." autocomplete="off">
+            </div>
+            <div class="ads-filter-pills">
+              <button type="button" class="ads-filter-btn active" data-filter="all" id="btnFilterAdsAll">Tutte (<span id="filterCountAll">0</span>)</button>
+              <button type="button" class="ads-filter-btn" data-filter="active" id="btnFilterAdsActive">Solo Attive (<span id="filterCountActive">0</span>)</button>
+              <button type="button" class="ads-filter-btn btn-filter-danger" data-filter="danger" id="btnFilterAdsDanger">Sopra Soglia (<span id="filterCountDanger">0</span>)</button>
+            </div>
+          </div>
+
+          <div class="ads-toolbar-right">
+            <!-- Sort by CPL / Spend / Leads -->
+            <div class="ads-sort-group">
+              <label for="clientAdsSortSelect" class="ads-sort-label">Ordina:</label>
+              <select id="clientAdsSortSelect" class="ads-sort-select">
+                <option value="cpl_desc">CPL: Più Alto</option>
+                <option value="cpl_asc">CPL: Più Basso</option>
+                <option value="spend_desc">Spesa: Più Alta</option>
+                <option value="leads_desc">Lead: Maggiori</option>
+                <option value="name_asc">Nome Inserzione (A-Z)</option>
+              </select>
+            </div>
+
+            <!-- Adset Group Toggle Buttons -->
+            <div class="ads-group-toggle-btns">
+              <button type="button" class="btn btn-xs btn-secondary" id="btnExpandAllAdsets" title="Espandi tutti i gruppi">Espandi Tutti</button>
+              <button type="button" class="btn btn-xs btn-secondary" id="btnCollapseAllAdsets" title="Comprimi tutti i gruppi">Comprimi Tutti</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="report-loading-overlay" id="clientAdsLoading" style="display: none;">
+          <div class="loading-spinner"></div>
+          <span>Caricamento inserzioni da Meta Ads in corso...</span>
+        </div>
+
+        <!-- AdSets Grouped Container -->
+        <div class="ads-grouped-container" id="clientAdsGroupedContainer">
+          <!-- Populated by JS with AdSet Cards -->
+        </div>
+
+        <div class="modal-foot">
+          <span id="clientAdsFooterCount" style="color: var(--text-dim); font-size: 0.82rem;">0 inserzioni</span>
+          <button class="btn btn-secondary" id="btnCloseClientAdsModalFooter" type="button">Chiudi</button>
+        </div>
+      </div>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

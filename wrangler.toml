@@ -1,0 +1,11 @@
+name = "leadsum"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+[assets]
+directory = "./public"
+not_found_handling = "single-page-application"
+
+[vars]
+META_API_VERSION = "v22.0"
+META_APP_ID = "1487594375621582"

@@ -1,0 +1,2082 @@
+/* ==========================================================================
+   LeadSum - Minimalist Multi-Client Application Logic
+   ========================================================================== */
+
+const STORAGE_KEYS = {
+  VISIBLE_ACCOUNTS: "leadsum_visible_accounts_v2",
+  CLIENT_ORDER: "leadsum_client_order_v2",
+  COST_THRESHOLD: "leadsum_cost_threshold_v2",
+  CLIENT_THRESHOLDS: "leadsum_client_thresholds_v2",
+  DATE_PRESET: "leadsum_date_preset_v2",
+  CUSTOM_SINCE: "leadsum_custom_since_v2",
+  CUSTOM_UNTIL: "leadsum_custom_until_v2",
+  ONLY_ACTIVE: "leadsum_only_active_v2",
+  USER_TOKEN: "leadsum_user_token_v2"
+};
+
+const state = {
+  user: {
+    authenticated: false,
+    id: null,
+    name: null,
+    picture: null,
+    token: sessionStorage.getItem(STORAGE_KEYS.USER_TOKEN) || null
+  },
+  allAdAccounts: [],
+  visibleAccountIds: JSON.parse(localStorage.getItem(STORAGE_KEYS.VISIBLE_ACCOUNTS) || "null"),
+  clientOrder: JSON.parse(localStorage.getItem(STORAGE_KEYS.CLIENT_ORDER) || "[]"),
+  clientThresholds: JSON.parse(localStorage.getItem(STORAGE_KEYS.CLIENT_THRESHOLDS) || "{}"),
+  datePreset: localStorage.getItem(STORAGE_KEYS.DATE_PRESET) || "yesterday",
+  customSince: localStorage.getItem(STORAGE_KEYS.CUSTOM_SINCE) || "",
+  customUntil: localStorage.getItem(STORAGE_KEYS.CUSTOM_UNTIL) || "",
+  costThreshold: parseFloat(localStorage.getItem(STORAGE_KEYS.COST_THRESHOLD) || "15.00"),
+  onlyActiveCampaigns: localStorage.getItem(STORAGE_KEYS.ONLY_ACTIVE) !== "false",
+  clientsData: [],
+  searchFilter: "",
+  sortColumn: "custom",
+  sortDirection: "asc",
+  expandedAccountId: null,
+  expandedDetailsCache: {},
+  adsModal: {
+    accountId: null,
+    filter: "all",
+    search: "",
+    sortColumn: "cpl",
+    sortDirection: "desc",
+    collapsedAdsets: {}
+  },
+  loading: false
+};
+
+const DOM = {
+  // Login & Auth
+  loginScreen: document.querySelector("#loginScreen"),
+  btnFacebookLogin: document.querySelector("#btnFacebookLogin"),
+  btnQuickLogin: document.querySelector("#btnQuickLogin"),
+  loginErrorMsg: document.querySelector("#loginErrorMsg"),
+  btnToggleManualToken: document.querySelector("#btnToggleManualToken"),
+  manualTokenBox: document.querySelector("#manualTokenBox"),
+  inputManualToken: document.querySelector("#inputManualToken"),
+  btnSubmitManualToken: document.querySelector("#btnSubmitManualToken"),
+  tokenChevron: document.querySelector("#tokenChevron"),
+  userProfileBadge: document.querySelector("#userProfileBadge"),
+  userProfileAvatar: document.querySelector("#userProfileAvatar"),
+  userProfileName: document.querySelector("#userProfileName"),
+  btnLogout: document.querySelector("#btnLogout"),
+
+  // Navigation & Date
+  dateButtons: document.querySelectorAll(".date-btn"),
+  customDatesWrap: document.querySelector("#customDatesWrap"),
+  inputDateSince: document.querySelector("#inputDateSince"),
+  inputDateUntil: document.querySelector("#inputDateUntil"),
+  btnApplyCustomDate: document.querySelector("#btnApplyCustomDate"),
+  globalThresholdInput: document.querySelector("#globalThresholdInput"),
+  chkOnlyActiveCampaigns: document.querySelector("#chkOnlyActiveCampaigns"),
+  btnOpenAccountsModal: document.querySelector("#btnOpenAccountsModal"),
+  btnAccountsCountText: document.querySelector("#btnAccountsCountText"),
+  btnOpenReportModal: document.querySelector("#btnOpenReportModal"),
+  btnRefreshData: document.querySelector("#btnRefreshData"),
+
+  // Totals Bar
+  totalLeadsVal: document.querySelector("#totalLeadsVal"),
+  totalSpendVal: document.querySelector("#totalSpendVal"),
+  totalCplVal: document.querySelector("#totalCplVal"),
+  totalBudgetVal: document.querySelector("#totalBudgetVal"),
+  totalAlertsVal: document.querySelector("#totalAlertsVal"),
+
+  // Table
+  tableDateRangeSubtitle: document.querySelector("#tableDateRangeSubtitle"),
+  clientSearchInput: document.querySelector("#clientSearchInput"),
+  colHeaderLeads: document.querySelector("#colHeaderLeads"),
+  colHeaderSpend: document.querySelector("#colHeaderSpend"),
+  clientsTableBody: document.querySelector("#clientsTableBody"),
+  footerMetaStatus: document.querySelector("#footerMetaStatus"),
+  footerRowsCount: document.querySelector("#footerRowsCount"),
+  tableHeaders: document.querySelectorAll(".th-sortable"),
+
+  // Modal Accounts
+  modalAccounts: document.querySelector("#modalAccounts"),
+  btnCloseAccountsModal: document.querySelector("#btnCloseAccountsModal"),
+  accountModalSearchInput: document.querySelector("#accountModalSearchInput"),
+  btnSelectAllAccounts: document.querySelector("#btnSelectAllAccounts"),
+  btnDeselectAllAccounts: document.querySelector("#btnDeselectAllAccounts"),
+  btnResetAlphabeticalOrder: document.querySelector("#btnResetAlphabeticalOrder"),
+  accountsCheckboxList: document.querySelector("#accountsCheckboxList"),
+  modalSelectedCount: document.querySelector("#modalSelectedCount"),
+  btnSaveAccountSelection: document.querySelector("#btnSaveAccountSelection"),
+
+  // Modal Report (Riepilogo globale)
+  modalReport: document.querySelector("#modalReport"),
+  btnCloseReportModal: document.querySelector("#btnCloseReportModal"),
+  reportTextOutput: document.querySelector("#reportTextOutput"),
+  reportCopyFeedback: document.querySelector("#reportCopyFeedback"),
+  btnCopyReportText: document.querySelector("#btnCopyReportText"),
+
+  // Modal Report Dettagliato Singolo Cliente (WhatsApp)
+  modalClientDetailedReport: document.querySelector("#modalClientDetailedReport"),
+  btnCloseClientDetailedReportModal: document.querySelector("#btnCloseClientDetailedReportModal"),
+  clientDetailedReportBadge: document.querySelector("#clientDetailedReportBadge"),
+  clientReportMetaPills: document.querySelector("#clientReportMetaPills"),
+  clientReportLoading: document.querySelector("#clientReportLoading"),
+  clientDetailedReportTextOutput: document.querySelector("#clientDetailedReportTextOutput"),
+  clientReportCopyFeedback: document.querySelector("#clientReportCopyFeedback"),
+  btnCopyClientDetailedReportText: document.querySelector("#btnCopyClientDetailedReportText"),
+  btnOpenInWhatsApp: document.querySelector("#btnOpenInWhatsApp"),
+
+  // Modal Dettagli Inserzioni Singolo Cliente
+  modalClientAdsDetails: document.querySelector("#modalClientAdsDetails"),
+  btnCloseClientAdsModal: document.querySelector("#btnCloseClientAdsModal"),
+  btnCloseClientAdsModalFooter: document.querySelector("#btnCloseClientAdsModalFooter"),
+  clientAdsModalClientName: document.querySelector("#clientAdsModalClientName"),
+  clientAdsModalThresholdBadge: document.querySelector("#clientAdsModalThresholdBadge"),
+  clientAdsKpiBar: document.querySelector("#clientAdsKpiBar"),
+  clientAdsSearchInput: document.querySelector("#clientAdsSearchInput"),
+  clientAdsFilterButtons: document.querySelectorAll(".ads-filter-btn"),
+  clientAdsSortSelect: document.querySelector("#clientAdsSortSelect"),
+  btnExpandAllAdsets: document.querySelector("#btnExpandAllAdsets"),
+  btnCollapseAllAdsets: document.querySelector("#btnCollapseAllAdsets"),
+  clientAdsLoading: document.querySelector("#clientAdsLoading"),
+  clientAdsGroupedContainer: document.querySelector("#clientAdsGroupedContainer"),
+  clientAdsTableBody: document.querySelector("#clientAdsTableBody"),
+  clientAdsFooterCount: document.querySelector("#clientAdsFooterCount"),
+  filterCountAll: document.querySelector("#filterCountAll"),
+  filterCountActive: document.querySelector("#filterCountActive"),
+  filterCountDanger: document.querySelector("#filterCountDanger")
+};
+
+// Utilities & Threshold helpers
+function getClientThreshold(accountId) {
+  if (state.clientThresholds && state.clientThresholds[accountId] !== undefined && state.clientThresholds[accountId] !== null && state.clientThresholds[accountId] !== "") {
+    const val = parseFloat(state.clientThresholds[accountId]);
+    if (!isNaN(val) && val > 0) return val;
+  }
+  return state.costThreshold;
+}
+
+function hasClientAdsOverThreshold(client) {
+  const clientThreshold = getClientThreshold(client.id);
+  const detail = state.expandedDetailsCache[client.id];
+  if (detail?.ads?.length) {
+    return detail.ads.some(ad => {
+      const isActive = ad.status === "ACTIVE" || ad.effective_status === "ACTIVE";
+      if (!isActive) return false;
+      return (ad.totalLeads > 0 && ad.cpl > clientThreshold) || (ad.totalLeads === 0 && ad.spend >= clientThreshold);
+    });
+  }
+  return (client.alertAdsCount > 0) || (client.totalLeads > 0 && client.cpl > clientThreshold) || (client.totalLeads === 0 && client.spend >= clientThreshold);
+}
+
+window.setClientCustomThreshold = function(accountId, value) {
+  const parsed = parseFloat(value);
+  if (!state.clientThresholds) state.clientThresholds = {};
+  if (!isNaN(parsed) && parsed > 0) {
+    state.clientThresholds[accountId] = parsed;
+  } else {
+    delete state.clientThresholds[accountId];
+  }
+  localStorage.setItem(STORAGE_KEYS.CLIENT_THRESHOLDS, JSON.stringify(state.clientThresholds));
+  renderTotalsBar(state.clientsData);
+  renderClientsTable();
+};
+
+window.resetClientCustomThreshold = function(accountId) {
+  if (state.clientThresholds) {
+    delete state.clientThresholds[accountId];
+    localStorage.setItem(STORAGE_KEYS.CLIENT_THRESHOLDS, JSON.stringify(state.clientThresholds));
+  }
+  renderTotalsBar(state.clientsData);
+  renderClientsTable();
+};
+
+// Utilities
+const formatCurrency = (val = 0, currency = "EUR") => {
+  const num = typeof val === "number" ? val : parseFloat(val || 0);
+  const symbol = currency === "USD" ? "$" : (currency === "GBP" ? "£" : "€");
+  return `${num.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${symbol}`;
+};
+
+const formatNumber = (val = 0) => {
+  const num = typeof val === "number" ? val : parseInt(val || 0, 10);
+  return num.toLocaleString("it-IT");
+};
+
+function escapeHtml(str = "") {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (state.user.token) {
+    headers["Authorization"] = `Bearer ${state.user.token}`;
+  }
+  const res = await fetch(path, { ...options, headers });
+  const data = await res.json();
+  if (!res.ok || data.error) {
+    if (res.status === 401 && !path.startsWith("/api/auth/")) {
+      showLoginScreen();
+    }
+    throw new Error(data.error || `Errore API (${res.status})`);
+  }
+  return data;
+}
+
+/* ==========================================================================
+   Facebook SDK & Authentication
+   ========================================================================== */
+
+function initFacebookSDK(appId) {
+  if (window.FB) return;
+  window.fbAsyncInit = function() {
+    FB.init({
+      appId: appId || "1487594375621582",
+      cookie: true,
+      xfbml: true,
+      version: "v22.0"
+    });
+  };
+
+  (function(d, s, id) {
+    var js, fjs = d.getElementsByTagName(s)[0];
+    if (d.getElementById(id)) return;
+    js = d.createElement(s); js.id = id;
+    js.src = "https://connect.facebook.net/it_IT/sdk.js";
+    fjs.parentNode.insertBefore(js, fjs);
+  }(document, "script", "facebook-jssdk"));
+}
+
+function showLoginScreen() {
+  if (DOM.loginScreen) DOM.loginScreen.style.display = "flex";
+  if (DOM.userProfileBadge) DOM.userProfileBadge.style.display = "none";
+}
+
+function showDashboardUI() {
+  if (DOM.loginScreen) DOM.loginScreen.style.display = "none";
+  if (DOM.userProfileBadge) {
+    DOM.userProfileBadge.style.display = "inline-flex";
+    if (DOM.userProfileName) DOM.userProfileName.textContent = state.user.name || "Utente Meta";
+    if (DOM.userProfileAvatar) {
+      if (state.user.picture) {
+        DOM.userProfileAvatar.src = state.user.picture;
+        DOM.userProfileAvatar.style.display = "inline-block";
+      } else {
+        DOM.userProfileAvatar.style.display = "none";
+      }
+    }
+  }
+}
+
+function showLoginError(msg) {
+  if (DOM.loginErrorMsg) {
+    DOM.loginErrorMsg.textContent = msg;
+    DOM.loginErrorMsg.style.display = "block";
+  }
+}
+
+function hideLoginError() {
+  if (DOM.loginErrorMsg) DOM.loginErrorMsg.style.display = "none";
+}
+
+async function checkUrlForOAuthToken() {
+  // Check hash: #access_token=...
+  if (window.location.hash && window.location.hash.includes("access_token=")) {
+    const params = new URLSearchParams(window.location.hash.substring(1));
+    const token = params.get("access_token");
+    if (token) {
+      window.history.replaceState(null, null, window.location.pathname + window.location.search);
+      return token;
+    }
+  }
+  // Check query params: ?access_token=...
+  const urlParams = new URLSearchParams(window.location.search);
+  const token = urlParams.get("access_token");
+  if (token) {
+    urlParams.delete("access_token");
+    const newSearch = urlParams.toString() ? `?${urlParams.toString()}` : "";
+    window.history.replaceState(null, null, window.location.pathname + newSearch);
+    return token;
+  }
+  return null;
+}
+
+async function handleTokenAuth(rawToken) {
+  try {
+    const authRes = await api("/api/auth/facebook-login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accessToken: rawToken })
+    });
+
+    if (authRes.ok && authRes.accessToken) {
+      state.user = {
+        authenticated: true,
+        ...authRes.user,
+        token: authRes.accessToken
+      };
+      sessionStorage.setItem(STORAGE_KEYS.USER_TOKEN, authRes.accessToken);
+      localStorage.removeItem(STORAGE_KEYS.USER_TOKEN);
+      showDashboardUI();
+      await loadInitialAccounts();
+      return true;
+    }
+  } catch (err) {
+    showLoginError(`Errore durante l'accesso: ${err.message}`);
+  }
+  return false;
+}
+
+function loginWithFacebook() {
+  hideLoginError();
+  const appId = state.appId || "1487594375621582";
+  const redirectUri = window.location.origin + window.location.pathname;
+  const oauthUrl = `https://www.facebook.com/v22.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=ads_read,ads_management,business_management,public_profile`;
+
+  if (window.FB && typeof FB.login === "function") {
+    try {
+      FB.login(async (response) => {
+        if (response.authResponse && response.authResponse.accessToken) {
+          await handleTokenAuth(response.authResponse.accessToken);
+        } else {
+          // If popup is blocked or fails, use direct OAuth redirect
+          window.location.href = oauthUrl;
+        }
+      }, { scope: "ads_read,ads_management,business_management,public_profile" });
+      return;
+    } catch (err) {
+      console.warn("FB.login fallback to redirect:", err);
+    }
+  }
+
+  // Direct OAuth Redirect
+  window.location.href = oauthUrl;
+}
+
+async function handleQuickLogin() {
+  hideLoginError();
+  try {
+    const authRes = await api("/api/auth/quick-login", {
+      method: "POST",
+      headers: { "content-type": "application/json" }
+    });
+
+    if (authRes.ok && authRes.accessToken) {
+      state.user = {
+        authenticated: true,
+        ...authRes.user,
+        token: authRes.accessToken
+      };
+      sessionStorage.setItem(STORAGE_KEYS.USER_TOKEN, authRes.accessToken);
+      localStorage.removeItem(STORAGE_KEYS.USER_TOKEN);
+      showDashboardUI();
+      await loadInitialAccounts();
+    }
+  } catch (err) {
+    showLoginError(`Errore accesso rapido: ${err.message}`);
+  }
+}
+
+async function handleManualTokenSubmit() {
+  const rawToken = DOM.inputManualToken?.value.trim();
+  if (!rawToken) {
+    showLoginError("Inserisci un Access Token valido.");
+    return;
+  }
+  hideLoginError();
+  await handleTokenAuth(rawToken);
+}
+
+function logout() {
+  sessionStorage.removeItem(STORAGE_KEYS.USER_TOKEN);
+  localStorage.removeItem(STORAGE_KEYS.USER_TOKEN);
+  state.user = { authenticated: false, id: null, name: null, picture: null, token: null };
+  if (window.FB && typeof FB.logout === "function") {
+    try { FB.logout(); } catch(e) {}
+  }
+  showLoginScreen();
+}
+
+/* ==========================================================================
+   Initialization
+   ========================================================================== */
+
+async function initApp() {
+  bindEvents();
+
+  // Restore inputs
+  if (DOM.globalThresholdInput) DOM.globalThresholdInput.value = state.costThreshold;
+  if (DOM.chkOnlyActiveCampaigns) DOM.chkOnlyActiveCampaigns.checked = state.onlyActiveCampaigns;
+  if (DOM.inputDateSince && state.customSince) DOM.inputDateSince.value = state.customSince;
+  if (DOM.inputDateUntil && state.customUntil) DOM.inputDateUntil.value = state.customUntil;
+
+  syncDateButtonsUI();
+
+  // 1. Check if token returned in OAuth URL callback
+  const urlOAuthToken = await checkUrlForOAuthToken();
+  if (urlOAuthToken) {
+    const ok = await handleTokenAuth(urlOAuthToken);
+    if (ok) return;
+  }
+
+  // 2. Check authentication with Meta API
+  try {
+    const auth = await api("/api/auth/me");
+    if (auth.appId) {
+      state.appId = auth.appId;
+      initFacebookSDK(auth.appId);
+    }
+
+    if (state.user.token && auth.authenticated) {
+      state.user = { authenticated: true, ...auth.user, token: state.user.token };
+      showDashboardUI();
+      await loadInitialAccounts();
+    } else {
+      showLoginScreen();
+    }
+  } catch (error) {
+    console.warn("Auth initialization note:", error.message);
+    showLoginScreen();
+  }
+}
+
+
+
+function getOrderedAdAccounts() {
+  const orderMap = new Map();
+  (state.clientOrder || []).forEach((id, idx) => orderMap.set(id, idx));
+
+  return [...state.allAdAccounts].sort((a, b) => {
+    const idxA = orderMap.has(a.id) ? orderMap.get(a.id) : 999999;
+    const idxB = orderMap.has(b.id) ? orderMap.get(b.id) : 999999;
+    if (idxA !== idxB) return idxA - idxB;
+    return (a.name || "").localeCompare(b.name || "");
+  });
+}
+
+function sortClientsByCustomOrder(list = []) {
+  const orderMap = new Map();
+  (state.clientOrder || []).forEach((id, idx) => orderMap.set(id, idx));
+
+  return [...list].sort((a, b) => {
+    const idxA = orderMap.has(a.id) ? orderMap.get(a.id) : 999999;
+    const idxB = orderMap.has(b.id) ? orderMap.get(b.id) : 999999;
+    if (idxA !== idxB) return idxA - idxB;
+    return (a.name || "").localeCompare(b.name || "");
+  });
+}
+
+async function loadInitialAccounts() {
+  try {
+    const config = await api("/api/meta/config");
+    state.allAdAccounts = config.adAccounts || [];
+
+    // If visibleAccountIds not yet configured, select all by default
+    if (!state.visibleAccountIds || !Array.isArray(state.visibleAccountIds)) {
+      state.visibleAccountIds = state.allAdAccounts.map(a => a.id);
+      localStorage.setItem(STORAGE_KEYS.VISIBLE_ACCOUNTS, JSON.stringify(state.visibleAccountIds));
+    }
+
+    // Ensure clientOrder is initialized and includes all accounts
+    if (!state.clientOrder || !Array.isArray(state.clientOrder) || state.clientOrder.length === 0) {
+      state.clientOrder = state.allAdAccounts.map(a => a.id);
+      localStorage.setItem(STORAGE_KEYS.CLIENT_ORDER, JSON.stringify(state.clientOrder));
+    } else {
+      const existingSet = new Set(state.clientOrder);
+      let added = false;
+      state.allAdAccounts.forEach(a => {
+        if (!existingSet.has(a.id)) {
+          state.clientOrder.push(a.id);
+          added = true;
+        }
+      });
+      if (added) {
+        localStorage.setItem(STORAGE_KEYS.CLIENT_ORDER, JSON.stringify(state.clientOrder));
+      }
+    }
+
+    updateAccountsButtonText();
+    await fetchClientsData();
+  } catch (error) {
+    console.error("Init load error:", error);
+    if (DOM.clientsTableBody) {
+      DOM.clientsTableBody.innerHTML = `
+        <tr>
+          <td colspan="7" style="text-align: center; color: var(--color-rose); padding: 40px;">
+            ⚠️ Errore caricamento account da Meta: ${error.message}
+          </td>
+        </tr>
+      `;
+    }
+  }
+}
+
+function updateAccountsButtonText() {
+  const total = state.allAdAccounts.length;
+  const visible = state.visibleAccountIds.length;
+  if (DOM.btnAccountsCountText) {
+    DOM.btnAccountsCountText.textContent = visible === total ? `Clienti Visibili (${total})` : `Clienti (${visible}/${total})`;
+  }
+}
+
+function syncDateButtonsUI() {
+  DOM.dateButtons.forEach(btn => {
+    if (btn.dataset.preset === state.datePreset) btn.classList.add("active");
+    else btn.classList.remove("active");
+  });
+
+  if (state.datePreset === "custom") {
+    if (DOM.customDatesWrap) DOM.customDatesWrap.style.display = "flex";
+  } else {
+    if (DOM.customDatesWrap) DOM.customDatesWrap.style.display = "none";
+  }
+
+  // Update table column headers
+  const labelPreset = getPresetLabel(state.datePreset).toUpperCase();
+  if (DOM.colHeaderLeads) DOM.colHeaderLeads.textContent = `LEAD (${labelPreset})`;
+  if (DOM.colHeaderSpend) DOM.colHeaderSpend.textContent = `SPESA (${labelPreset})`;
+  if (DOM.tableDateRangeSubtitle) {
+    if (state.datePreset === "custom" && state.customSince && state.customUntil) {
+      DOM.tableDateRangeSubtitle.textContent = `Dati periodo: ${state.customSince} → ${state.customUntil}`;
+    } else {
+      DOM.tableDateRangeSubtitle.textContent = `Dati periodo: ${getPresetLabel(state.datePreset)}`;
+    }
+  }
+}
+
+function getPresetLabel(preset) {
+  switch (preset) {
+    case "yesterday": return "Ieri";
+    case "today": return "Oggi";
+    case "last_7d": return "Ultimi 7 gg";
+    case "this_month": return "Questo Mese";
+    case "last_month": return "Mese Scorso";
+    case "custom": return "Personalizzato";
+    default: return preset;
+  }
+}
+
+/* ==========================================================================
+   Data Fetching & Table Rendering
+   ========================================================================== */
+
+async function fetchClientsData() {
+  state.loading = true;
+  if (DOM.btnRefreshData) {
+    const icon = DOM.btnRefreshData.querySelector(".refresh-icon");
+    if (icon) icon.classList.add("spinning");
+  }
+
+  if (DOM.clientsTableBody) {
+    DOM.clientsTableBody.innerHTML = `
+      <tr>
+        <td colspan="7" class="td-loading">
+          <div class="loading-spinner"></div>
+          <span>Caricamento metriche in tempo reale da Meta Ads...</span>
+        </td>
+      </tr>
+    `;
+  }
+
+  const selectedIds = state.visibleAccountIds.length > 0 ? state.visibleAccountIds.join(",") : "none";
+
+  const params = new URLSearchParams({
+    accountIds: selectedIds,
+    datePreset: state.datePreset,
+    threshold: state.costThreshold
+  });
+
+  if (state.datePreset === "custom" && state.customSince && state.customUntil) {
+    params.set("since", state.customSince);
+    params.set("until", state.customUntil);
+  }
+
+  try {
+    const res = await api(`/api/meta/insights/clients-overview?${params.toString()}`);
+    state.clientsData = res.clients || [];
+
+    renderTotalsBar(state.clientsData);
+    renderClientsTable();
+
+    if (DOM.footerMetaStatus) {
+      DOM.footerMetaStatus.textContent = res.isDemo
+        ? "⚠️ Modalità Demo Realistica"
+        : `Dati live da Meta API • Aggiornato: ${new Date().toLocaleTimeString("it-IT")}`;
+    }
+  } catch (error) {
+    console.error("Clients overview fetch error:", error);
+    if (DOM.clientsTableBody) {
+      DOM.clientsTableBody.innerHTML = `
+        <tr>
+          <td colspan="7" style="text-align: center; color: var(--color-rose); padding: 40px;">
+            ⚠️ Impossibile caricare i dati delle campagne: ${error.message}
+          </td>
+        </tr>
+      `;
+    }
+  } finally {
+    state.loading = false;
+    if (DOM.btnRefreshData) {
+      const icon = DOM.btnRefreshData.querySelector(".refresh-icon");
+      if (icon) icon.classList.remove("spinning");
+    }
+  }
+}
+
+function renderTotalsBar(clients = []) {
+  const totalLeads = clients.reduce((sum, c) => sum + (c.totalLeads || 0), 0);
+  const totalSpend = clients.reduce((sum, c) => sum + (c.spend || 0), 0);
+  const totalBudget = clients.reduce((sum, c) => sum + (c.dailyBudget || 0), 0);
+  const totalAlerts = clients.reduce((sum, c) => {
+    const thresh = getClientThreshold(c.id);
+    const isOver = (c.totalLeads > 0 && c.cpl > thresh) || (c.totalLeads === 0 && c.spend >= thresh);
+    return sum + (isOver || (c.alertAdsCount > 0) ? 1 : 0);
+  }, 0);
+  const avgCpl = totalLeads > 0 ? totalSpend / totalLeads : 0;
+
+  if (DOM.totalLeadsVal) DOM.totalLeadsVal.textContent = formatNumber(totalLeads);
+  if (DOM.totalSpendVal) DOM.totalSpendVal.textContent = formatCurrency(totalSpend);
+  if (DOM.totalCplVal) {
+    DOM.totalCplVal.textContent = totalLeads > 0 ? formatCurrency(avgCpl) : "€ 0,00";
+    DOM.totalCplVal.className = avgCpl > state.costThreshold ? "total-val text-rose" : "total-val text-emerald";
+  }
+  if (DOM.totalBudgetVal) DOM.totalBudgetVal.textContent = `${formatCurrency(totalBudget)}/gg`;
+  if (DOM.totalAlertsVal) {
+    DOM.totalAlertsVal.textContent = totalAlerts;
+    DOM.totalAlertsVal.className = totalAlerts > 0 ? "total-val text-rose" : "total-val text-emerald";
+  }
+}
+
+function renderClientsTable() {
+  const container = DOM.clientsTableBody;
+  if (!container) return;
+
+  const search = (DOM.clientSearchInput?.value || "").toLowerCase().trim();
+  let list = [...state.clientsData];
+
+  // Search filter
+  if (search) {
+    list = list.filter(c => (c.name || "").toLowerCase().includes(search) || (c.id || "").toLowerCase().includes(search));
+  }
+
+  // Sorting
+  if (state.sortColumn === "custom") {
+    const orderMap = new Map();
+    (state.clientOrder || []).forEach((id, idx) => orderMap.set(id, idx));
+    list.sort((a, b) => {
+      const posA = orderMap.has(a.id) ? orderMap.get(a.id) : 999999;
+      const posB = orderMap.has(b.id) ? orderMap.get(b.id) : 999999;
+      if (posA !== posB) {
+        return state.sortDirection === "asc" ? posA - posB : posB - posA;
+      }
+      return (a.name || "").localeCompare(b.name || "");
+    });
+  } else {
+    list.sort((a, b) => {
+      let valA, valB;
+      switch (state.sortColumn) {
+        case "name":
+          valA = (a.name || "").toLowerCase();
+          valB = (b.name || "").toLowerCase();
+          return state.sortDirection === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        case "leads":
+          valA = a.totalLeads || 0;
+          valB = b.totalLeads || 0;
+          break;
+        case "spend":
+          valA = a.spend || 0;
+          valB = b.spend || 0;
+          break;
+        case "cpl":
+          valA = a.cpl || 0;
+          valB = b.cpl || 0;
+          break;
+        case "budget":
+          valA = a.dailyBudget || 0;
+          valB = b.dailyBudget || 0;
+          break;
+        default:
+          valA = a.spend || 0;
+          valB = b.spend || 0;
+      }
+      return state.sortDirection === "asc" ? valA - valB : valB - valA;
+    });
+  }
+
+  if (DOM.footerRowsCount) {
+    DOM.footerRowsCount.textContent = `${list.length} clienti mostrati`;
+  }
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 50px;">
+          Nessun cliente trovato. Prova a modificare i filtri o seleziona più account dal pulsante "Filtra Clienti".
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  const rowsHtml = list.map(client => {
+    const isExpanded = state.expandedAccountId === client.id;
+    const clientThreshold = getClientThreshold(client.id);
+    const hasCustomThreshold = state.clientThresholds && state.clientThresholds[client.id] !== undefined && state.clientThresholds[client.id] !== null && state.clientThresholds[client.id] !== "";
+    const isOverThreshold = (client.totalLeads > 0 && client.cpl > clientThreshold) || (client.totalLeads === 0 && client.spend >= clientThreshold);
+    const hasAlerts = client.alertAdsCount > 0;
+    const hasOverAds = hasClientAdsOverThreshold(client);
+
+    const cplClass = client.totalLeads === 0
+      ? "cpl-tag tag-zero"
+      : (client.cpl > clientThreshold ? "cpl-tag tag-danger" : "cpl-tag tag-ok");
+
+    const campaignSubText = state.onlyActiveCampaigns
+      ? `${client.activeCampaignsCount} campagne attive`
+      : `${client.totalCampaignsCount || client.activeCampaignsCount} campagne totali`;
+
+    return `
+      <tr class="client-row ${hasAlerts || isOverThreshold || hasOverAds ? "row-danger" : ""} ${isExpanded ? "row-expanded" : ""}" onclick="toggleClientExpand('${client.id}')">
+        <td>
+          <div class="cell-client">
+            <span class="client-name">${client.name}</span>
+            <span class="client-sub">${campaignSubText}</span>
+          </div>
+        </td>
+        <td class="text-right">
+          <span class="val-mono ${client.totalLeads > 0 ? "text-emerald" : ""}">${client.totalLeads}</span>
+        </td>
+        <td class="text-right">
+          <span class="val-mono">${formatCurrency(client.spend, client.currency)}</span>
+        </td>
+        <td class="text-right">
+          <span class="${cplClass}">
+            ${client.totalLeads > 0 ? formatCurrency(client.cpl, client.currency) : "0,00 €"}
+          </span>
+        </td>
+        <td class="text-right">
+          <span class="val-mono text-blue">${client.dailyBudget > 0 ? formatCurrency(client.dailyBudget, client.currency) : "-"}</span>
+        </td>
+        <td class="text-center" onclick="event.stopPropagation()">
+          <div class="threshold-cell-wrap">
+            <div class="threshold-input-pill ${hasCustomThreshold ? 'is-custom' : ''}">
+              <span class="currency-sym">€</span>
+              <input type="number" step="0.5" min="0"
+                     class="inline-threshold-input"
+                     value="${hasCustomThreshold ? clientThreshold : ''}"
+                     placeholder="${state.costThreshold.toFixed(2)}"
+                     title="Soglia CPL personalizzata per ${client.name}. Lascia vuoto per usare quella globale (€${state.costThreshold.toFixed(2)})"
+                     onchange="setClientCustomThreshold('${client.id}', this.value)"
+              />
+              ${hasCustomThreshold ? `<button class="btn-clear-threshold" type="button" title="Ripristina soglia globale (€${state.costThreshold.toFixed(2)})" onclick="event.stopPropagation(); resetClientCustomThreshold('${client.id}')">✕</button>` : ''}
+            </div>
+            <div class="threshold-status-wrap">
+              ${isOverThreshold
+                ? `<span class="alert-badge badge-danger" title="${client.totalLeads > 0 ? `CPL €${client.cpl.toFixed(2)} > Soglia €${clientThreshold.toFixed(2)}` : `Spesa €${client.spend.toFixed(2)} senza lead > Soglia €${clientThreshold.toFixed(2)}`}">⚠️ Superata</span>`
+                : `<span class="alert-badge badge-ok" title="Performance entro la soglia di €${clientThreshold.toFixed(2)}">✓ In soglia</span>`
+              }
+            </div>
+          </div>
+        </td>
+        <td class="text-center actions-cell" onclick="event.stopPropagation()">
+          <div class="actions-buttons-stack">
+            <button class="btn btn-report-client" type="button" onclick="event.stopPropagation(); openDetailedClientReport('${client.id}')" title="Genera report dettagliato delle campagne attive pronto per WhatsApp">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+              </svg>
+              <span>Report dettagliato</span>
+            </button>
+            <button class="btn btn-ads-details ${hasOverAds ? 'btn-ads-danger' : 'btn-ads-normal'}" type="button" onclick="event.stopPropagation(); openClientAdsModal('${client.id}')" title="${hasOverAds ? 'Attenzione: alcune inserzioni superano la soglia di costo!' : 'Dettagli e gestione inserzioni del cliente'}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                <polyline points="2 17 12 22 22 17"></polyline>
+                <polyline points="2 12 12 17 22 12"></polyline>
+              </svg>
+              <span>Dettagli Inserzioni</span>
+            </button>
+          </div>
+          <button class="btn-expand-chevron" type="button" onclick="event.stopPropagation(); toggleClientExpand('${client.id}')" title="Espandi/Riduci dettagli inline">
+            <span class="expand-chevron">▼</span>
+          </button>
+        </td>
+      </tr>
+      ${isExpanded ? renderExpandedDetailRow(client) : ""}
+    `;
+  }).join("");
+
+  container.innerHTML = rowsHtml;
+}
+
+function renderExpandedDetailRow(client) {
+  const detail = state.expandedDetailsCache[client.id];
+
+  if (!detail) {
+    return `
+      <tr class="detail-row">
+        <td colspan="7">
+          <div class="client-detail-box" style="text-align: center; padding: 30px;">
+            <div class="loading-spinner"></div>
+            <span>Caricamento dettagli campagne e inserzioni di ${client.name}...</span>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  const { campaigns = [], ads = [] } = detail;
+  const clientThreshold = getClientThreshold(client.id);
+  
+  // Apply only active filter if checked
+  const filteredCampaigns = state.onlyActiveCampaigns
+    ? campaigns.filter(c => c.status === "ACTIVE" || c.effective_status === "ACTIVE")
+    : campaigns;
+
+  const filteredAds = state.onlyActiveCampaigns
+    ? ads.filter(a => a.status === "ACTIVE" || a.effective_status === "ACTIVE")
+    : ads;
+
+  const criticalAds = filteredAds.filter(ad => (ad.totalLeads > 0 && ad.cpl > clientThreshold) || (ad.totalLeads === 0 && ad.spend >= clientThreshold));
+
+  return `
+    <tr class="detail-row">
+      <td colspan="7">
+        <div class="client-detail-box">
+          
+          <!-- Critical Ads Section (if any) -->
+          ${criticalAds.length > 0 ? `
+            <div>
+              <div class="detail-section-title" style="color: var(--color-rose);">
+                <span>⚠️ Inserzioni Sopra Soglia (€ ${clientThreshold.toFixed(2)})</span>
+                <span class="badge" style="background: var(--color-rose); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 0.72rem;">${criticalAds.length} critiche</span>
+              </div>
+              <table class="sub-table" style="margin-top: 8px;">
+                <thead>
+                  <tr>
+                    <th>Nome Inserzione (Apri in Ads Manager)</th>
+                    <th>Campagna</th>
+                    <th>Stato</th>
+                    <th class="text-right">Spesa</th>
+                    <th class="text-right">Lead</th>
+                    <th class="text-right">CPL</th>
+                    <th class="text-center">Azione</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${criticalAds.map(ad => `
+                    <tr>
+                      <td>
+                        <a href="${ad.adsManagerUrl || `https://www.facebook.com/adsmanager/manage/ads?selected_ad_ids=${ad.id}`}" target="_blank" rel="noopener noreferrer" class="ad-link-external" onclick="event.stopPropagation()" title="Apri inserzione direttamente in Meta Ads Manager">
+                          <strong class="ad-name-text">${ad.name}</strong>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="link-external-icon">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                          </svg>
+                        </a>
+                      </td>
+                      <td style="color: var(--text-dim);">${ad.campaign_name || "-"}</td>
+                      <td><span class="alert-badge ${ad.status === "ACTIVE" ? "badge-ok" : "badge-danger"}">${ad.status}</span></td>
+                      <td class="text-right val-mono">${formatCurrency(ad.spend)}</td>
+                      <td class="text-right val-mono text-emerald">${ad.totalLeads}</td>
+                      <td class="text-right val-mono text-rose">${ad.totalLeads > 0 ? formatCurrency(ad.cpl) : "0 lead"}</td>
+                      <td class="text-center">
+                        <button class="btn btn-xs" style="background: var(--color-rose-bg); color: var(--color-rose); border-color: rgba(244,63,94,0.3);" onclick="event.stopPropagation(); toggleAdStatusInline('${ad.id}', '${ad.status === "ACTIVE" ? "PAUSED" : "ACTIVE"}', '${client.id}')">
+                          ${ad.status === "ACTIVE" ? "Metti in Pausa" : "Attiva"}
+                        </button>
+                      </td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          ` : `
+            <div style="padding: 10px; background: rgba(16,185,129,0.06); border-radius: 6px; border: 1px solid rgba(16,185,129,0.2); font-size: 0.82rem; color: var(--color-emerald);">
+              ✨ Ottimo! Nessuna inserzione ${state.onlyActiveCampaigns ? "attiva" : ""} di questo cliente supera la soglia di € ${clientThreshold.toFixed(2)}.
+            </div>
+          `}
+
+          <!-- Campaigns Section -->
+          <div>
+            <div class="detail-section-title">
+              <span>${state.onlyActiveCampaigns ? "🎯 Campagne Attive del Cliente" : "🎯 Tutte le Campagne del Cliente"} (Apri in Ads Manager)</span>
+              <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: normal;">(${filteredCampaigns.length} ${state.onlyActiveCampaigns ? "attive" : "totali"})</span>
+            </div>
+            <table class="sub-table" style="margin-top: 8px;">
+              <thead>
+                <tr>
+                  <th>Campagna</th>
+                  <th>Stato</th>
+                  <th>Budget</th>
+                  <th class="text-right">Spesa Periodo</th>
+                  <th class="text-right">Lead</th>
+                  <th class="text-right">CPL</th>
+                  <th class="text-right">CTR</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filteredCampaigns.length > 0 ? filteredCampaigns.map(c => `
+                  <tr>
+                    <td>
+                      <a href="${c.adsManagerUrl || `https://www.facebook.com/adsmanager/manage/campaigns?selected_campaign_ids=${c.id}`}" target="_blank" rel="noopener noreferrer" class="ad-link-external" onclick="event.stopPropagation()" title="Apri campagna in Meta Ads Manager">
+                        <strong class="ad-name-text">${c.name}</strong>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="link-external-icon">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                          <polyline points="15 3 21 3 21 9"></polyline>
+                          <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                      </a>
+                    </td>
+                    <td><span class="alert-badge ${c.status === "ACTIVE" ? "badge-ok" : "badge-danger"}">${c.status}</span></td>
+                    <td style="color: var(--color-blue);">${c.dailyBudgetVal > 0 ? `${formatCurrency(c.dailyBudgetVal)}/gg` : "A livello gruppo"}</td>
+                    <td class="text-right val-mono">${formatCurrency(c.spend)}</td>
+                    <td class="text-right val-mono text-emerald">${c.totalLeads}</td>
+                    <td class="text-right val-mono">${c.totalLeads > 0 ? formatCurrency(c.cpl) : "-"}</td>
+                    <td class="text-right val-mono">${(c.ctr || 0).toFixed(2)}%</td>
+                  </tr>
+                `).join("") : `
+                  <tr>
+                    <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 18px;">
+                      Nessuna campagna attiva al momento per questo account.
+                    </td>
+                  </tr>
+                `}
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+window.toggleClientExpand = async function(accountId) {
+  if (state.expandedAccountId === accountId) {
+    state.expandedAccountId = null;
+    renderClientsTable();
+    return;
+  }
+
+  state.expandedAccountId = accountId;
+  renderClientsTable();
+
+  // If detail in cache is demo data but account is real, invalidate
+  if (state.expandedDetailsCache[accountId]?.isDemo && !accountId.startsWith("act_demo")) {
+    delete state.expandedDetailsCache[accountId];
+  }
+
+  // If detail not in cache, fetch it
+  if (!state.expandedDetailsCache[accountId]) {
+    try {
+      const params = new URLSearchParams({
+        accountId,
+        datePreset: state.datePreset
+      });
+      if (state.datePreset === "custom" && state.customSince && state.customUntil) {
+        params.set("since", state.customSince);
+        params.set("until", state.customUntil);
+      }
+
+      const detail = await api(`/api/meta/insights/summary?${params.toString()}`);
+      state.expandedDetailsCache[accountId] = detail;
+      renderClientsTable();
+    } catch (err) {
+      alert(`Errore caricamento dettagli account: ${err.message}`);
+    }
+  }
+};
+
+window.toggleAdStatusInline = async function(adId, newStatus, accountId) {
+  try {
+    await api("/api/meta/ads/toggle-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ adId, status: newStatus })
+    });
+
+    // Update in local cache
+    if (state.expandedDetailsCache[accountId]?.ads) {
+      const ad = state.expandedDetailsCache[accountId].ads.find(a => a.id === adId);
+      if (ad) ad.status = newStatus;
+    }
+    renderClientsTable();
+  } catch (err) {
+    alert(`Errore modifica stato inserzione: ${err.message}`);
+  }
+};
+
+/* ==========================================================================
+   Account Selection & Ordering Modal ("Gestione & Ordinamento Clienti")
+   ========================================================================== */
+
+let draggedAccountId = null;
+
+function openAccountsModal() {
+  renderAccountsCheckboxList();
+  DOM.modalAccounts?.showModal();
+}
+
+function renderAccountsCheckboxList() {
+  const container = DOM.accountsCheckboxList;
+  if (!container) return;
+
+  const search = (DOM.accountModalSearchInput?.value || "").toLowerCase().trim();
+  const orderedAccounts = getOrderedAdAccounts();
+  const filteredAccounts = orderedAccounts.filter(a =>
+    (a.name || "").toLowerCase().includes(search) || (a.id || "").toLowerCase().includes(search)
+  );
+
+  const itemsHtml = filteredAccounts.map((a) => {
+    const isChecked = state.visibleAccountIds.includes(a.id);
+    const orderIndex = orderedAccounts.findIndex(x => x.id === a.id) + 1;
+    const isFirst = orderIndex === 1;
+    const isLast = orderIndex === orderedAccounts.length;
+
+    return `
+      <div class="account-order-item" draggable="true" data-account-id="${a.id}" ondragstart="handleAccountDragStart(event, '${a.id}')" ondragover="handleAccountDragOver(event)" ondrop="handleAccountDrop(event, '${a.id}')" ondragend="handleAccountDragEnd(event)">
+        <span class="order-drag-handle" title="Trascina per riordinare">⠿</span>
+        <span class="order-badge">#${orderIndex}</span>
+        <label class="account-checkbox-label">
+          <input type="checkbox" value="${a.id}" ${isChecked ? "checked" : ""} onchange="handleAccountCheckboxToggle('${a.id}', this.checked)">
+          <div class="account-item-info">
+            <span class="account-item-title">${a.name}</span>
+            <span class="account-item-id">${a.id}</span>
+          </div>
+        </label>
+        <div class="account-threshold-box" title="Soglia CPL personalizzata per questo cliente (€)" onclick="event.stopPropagation()">
+          <span>Soglia: €</span>
+          <input type="number" step="0.5" min="0" class="account-threshold-field"
+                 value="${state.clientThresholds && state.clientThresholds[a.id] !== undefined ? state.clientThresholds[a.id] : ''}"
+                 placeholder="${state.costThreshold.toFixed(2)}"
+                 onchange="setClientCustomThreshold('${a.id}', this.value)"
+          />
+        </div>
+        <div class="account-reorder-actions">
+          <button type="button" class="btn-reorder-move" onclick="moveAccountOrder('${a.id}', -1)" title="Sposta Su" ${isFirst ? "disabled" : ""}>▲</button>
+          <button type="button" class="btn-reorder-move" onclick="moveAccountOrder('${a.id}', 1)" title="Sposta Giù" ${isLast ? "disabled" : ""}>▼</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  container.innerHTML = itemsHtml || `<div style="padding: 20px; text-align: center; color: var(--text-dim);">Nessun account trovato</div>`;
+
+  if (DOM.modalSelectedCount) {
+    DOM.modalSelectedCount.textContent = `${state.visibleAccountIds.length} su ${state.allAdAccounts.length} account selezionati`;
+  }
+}
+
+window.moveAccountOrder = function(accountId, direction) {
+  const currentOrder = getOrderedAdAccounts().map(a => a.id);
+  const fromIndex = currentOrder.indexOf(accountId);
+  if (fromIndex === -1) return;
+
+  const toIndex = fromIndex + direction;
+  if (toIndex < 0 || toIndex >= currentOrder.length) return;
+
+  const [movedId] = currentOrder.splice(fromIndex, 1);
+  currentOrder.splice(toIndex, 0, movedId);
+
+  state.clientOrder = currentOrder;
+  renderAccountsCheckboxList();
+};
+
+window.handleAccountDragStart = function(e, accountId) {
+  draggedAccountId = accountId;
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", accountId);
+  e.currentTarget.classList.add("is-dragging");
+};
+
+window.handleAccountDragOver = function(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  const item = e.currentTarget.closest(".account-order-item");
+  if (item) item.classList.add("drag-over");
+};
+
+window.handleAccountDrop = function(e, targetAccountId) {
+  e.preventDefault();
+  const item = e.currentTarget.closest(".account-order-item");
+  if (item) item.classList.remove("drag-over");
+
+  if (!draggedAccountId || draggedAccountId === targetAccountId) return;
+
+  const currentOrder = getOrderedAdAccounts().map(a => a.id);
+  const fromIndex = currentOrder.indexOf(draggedAccountId);
+  const toIndex = currentOrder.indexOf(targetAccountId);
+
+  if (fromIndex !== -1 && toIndex !== -1) {
+    const [movedId] = currentOrder.splice(fromIndex, 1);
+    currentOrder.splice(toIndex, 0, movedId);
+    state.clientOrder = currentOrder;
+    renderAccountsCheckboxList();
+  }
+};
+
+window.handleAccountDragEnd = function(e) {
+  draggedAccountId = null;
+  document.querySelectorAll(".account-order-item").forEach(el => {
+    el.classList.remove("is-dragging", "drag-over");
+  });
+};
+
+window.resetAccountsAlphabeticalOrder = function() {
+  const sorted = [...state.allAdAccounts].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  state.clientOrder = sorted.map(a => a.id);
+  renderAccountsCheckboxList();
+};
+
+window.handleAccountCheckboxToggle = function(accountId, isChecked) {
+  if (isChecked) {
+    if (!state.visibleAccountIds.includes(accountId)) state.visibleAccountIds.push(accountId);
+  } else {
+    state.visibleAccountIds = state.visibleAccountIds.filter(id => id !== accountId);
+  }
+
+  if (DOM.modalSelectedCount) {
+    DOM.modalSelectedCount.textContent = `${state.visibleAccountIds.length} su ${state.allAdAccounts.length} account selezionati`;
+  }
+};
+
+function saveAccountSelection() {
+  if (!state.clientOrder || state.clientOrder.length === 0) {
+    state.clientOrder = state.allAdAccounts.map(a => a.id);
+  }
+  localStorage.setItem(STORAGE_KEYS.VISIBLE_ACCOUNTS, JSON.stringify(state.visibleAccountIds));
+  localStorage.setItem(STORAGE_KEYS.CLIENT_ORDER, JSON.stringify(state.clientOrder));
+  updateAccountsButtonText();
+  DOM.modalAccounts?.close();
+  state.expandedDetailsCache = {};
+  fetchClientsData();
+}
+
+/* ==========================================================================
+   Report Generator Modal (WhatsApp / Slack formatted summary)
+   ========================================================================== */
+
+function openReportModal() {
+  const clients = state.clientsData;
+  const dateLabel = getPresetLabel(state.datePreset).toUpperCase();
+  const now = new Date().toLocaleDateString("it-IT");
+
+  // Sort according to custom client order
+  const orderedClients = sortClientsByCustomOrder(clients);
+
+  const clientsLines = orderedClients
+    .filter(c => c.spend > 0 || c.totalLeads > 0 || (c.dailyBudget || 0) > 0)
+    .map(c => {
+      const thresh = getClientThreshold(c.id);
+      const isOver = (c.totalLeads > 0 && c.cpl > thresh) || (c.totalLeads === 0 && c.spend >= thresh);
+      return `• *${c.name}*: ${c.totalLeads} lead | Spesa: ${formatCurrency(c.spend)} | CPL: ${c.totalLeads > 0 ? formatCurrency(c.cpl) : "-"} | Budget: ${formatCurrency(c.dailyBudget)}/gg${isOver || c.alertAdsCount > 0 ? ` (⚠️ > soglia €${thresh.toFixed(2)})` : ""}`;
+    })
+    .join("\n");
+
+  const reportText = `📊 *RIASSUNTO CLIENTI META ADS - ${dateLabel}*
+📅 Data: ${now}
+────────────────────────
+*DETTAGLIO PER CLIENTE:*
+${clientsLines || "Nessun dato di spesa nel periodo."}
+────────────────────────
+_Generato con LeadSum_`;
+
+  if (DOM.reportTextOutput) DOM.reportTextOutput.value = reportText;
+  if (DOM.reportCopyFeedback) DOM.reportCopyFeedback.textContent = "";
+  DOM.modalReport?.showModal();
+}
+
+/* ==========================================================================
+   Detailed Client Report Generator (Formatted for WhatsApp)
+   ========================================================================== */
+
+function translateObjective(objective) {
+  switch (objective) {
+    case "OUTCOME_LEADS": return "🎯 Lead Generation (Contatti)";
+    case "OUTCOME_ENGAGEMENT": return "💬 Interazioni & WhatsApp";
+    case "OUTCOME_SALES": return "🛍️ Vendite / Conversioni";
+    case "OUTCOME_TRAFFIC": return "🚀 Traffico al Sito";
+    case "OUTCOME_AWARENESS": return "📢 Notorietà del Brand";
+    case "MESSAGES": return "💬 Messaggi WhatsApp / Direct";
+    default: return objective || "Generazione Lead";
+  }
+}
+
+function buildDetailedClientWhatsAppReport(client, detail) {
+  const currency = client.currency || detail.account?.currency || "EUR";
+  const clientThreshold = getClientThreshold(client.id);
+  const dateLabel = getPresetLabel(state.datePreset).toUpperCase();
+  const now = new Date();
+  const nowDate = now.toLocaleDateString("it-IT");
+  const nowTime = now.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+
+  const kpis = detail.kpis || {};
+  const campaigns = detail.campaigns || [];
+  const leadBreakdown = detail.leadBreakdown || {};
+
+  // Filter active campaigns
+  const activeCampaigns = campaigns.filter(c => c.status === "ACTIVE" || c.effective_status === "ACTIVE");
+
+  const totalLeads = kpis.totalLeads !== undefined ? kpis.totalLeads : (client.totalLeads || 0);
+  const totalSpend = kpis.totalSpend !== undefined ? kpis.totalSpend : (client.spend || 0);
+  const avgCpl = totalLeads > 0 ? (kpis.averageCpl !== undefined ? kpis.averageCpl : (client.cpl || 0)) : 0;
+  const totalDailyBudget = kpis.totalDailyBudget !== undefined ? kpis.totalDailyBudget : (client.dailyBudget || 0);
+
+  const isAccountOverThreshold = (totalLeads > 0 && avgCpl > clientThreshold) || (totalLeads === 0 && totalSpend >= clientThreshold);
+
+  // Breakdown of lead sources
+  const leadSources = [];
+  if ((leadBreakdown.formLeads || 0) > 0) leadSources.push(`  • Moduli Contatti Facebook: *${leadBreakdown.formLeads}*`);
+  if ((leadBreakdown.pixelLeads || 0) > 0) leadSources.push(`  • Conversioni Sito Web (Pixel): *${leadBreakdown.pixelLeads}*`);
+  if ((leadBreakdown.messagingLeads || 0) > 0) leadSources.push(`  • Conversazioni WhatsApp / Direct: *${leadBreakdown.messagingLeads}*`);
+
+  // Active campaigns section
+  let campaignsSection = "";
+  if (activeCampaigns.length === 0) {
+    campaignsSection = `⚠️ _Nessuna campagna attualmente con stato ATTIVO trovata per questo account nel periodo selezionato._\n`;
+    if (campaigns.length > 0) {
+      campaignsSection += `(Trovate ${campaigns.length} campagne in pausa o completate nel periodo)\n`;
+    }
+  } else {
+    campaignsSection = activeCampaigns.map((c, idx) => {
+      const isCampOver = (c.totalLeads > 0 && c.cpl > clientThreshold) || (c.totalLeads === 0 && c.spend >= clientThreshold);
+      const campStatusTag = isCampOver 
+        ? `⚠️ *SOPRA SOGLIA* (Soglia: ${formatCurrency(clientThreshold, currency)})` 
+        : `✅ *In Soglia*`;
+
+      const campLeadTypes = [];
+      if ((c.formLeads || 0) > 0) campLeadTypes.push(`Moduli: ${c.formLeads}`);
+      if ((c.pixelLeads || 0) > 0) campLeadTypes.push(`Pixel: ${c.pixelLeads}`);
+      if ((c.messagingLeads || 0) > 0) campLeadTypes.push(`WhatsApp: ${c.messagingLeads}`);
+
+      const todayText = (c.todaySpend > 0 || c.todayLeads > 0)
+        ? `\n  • ⚡ *Oggi (Realtime):* ${formatCurrency(c.todaySpend, currency)} spesi | *${c.todayLeads} lead* ${c.todayLeads > 0 ? `(CPL oggi: ${formatCurrency(c.todayCpl, currency)})` : ""}`
+        : "";
+
+      return `📌 *${idx + 1}. ${c.name}*
+  • Stato: 🟢 *ATTIVA*
+  • Obiettivo: *${translateObjective(c.objective)}*
+  • Tipo Budget: *${c.budgetType || "Standard"}* ${c.dailyBudgetVal > 0 ? `(${formatCurrency(c.dailyBudgetVal, currency)}/gg)` : ""}
+  • 💶 Spesa nel Periodo: *${formatCurrency(c.spend, currency)}*
+  • 👥 Lead Generati: *${c.totalLeads} contatti* ${campLeadTypes.length > 0 ? `(${campLeadTypes.join(", ")})` : ""}
+  • 🎯 Costo per Lead (CPL): *${c.totalLeads > 0 ? formatCurrency(c.cpl, currency) : "-"}* ➔ ${campStatusTag}
+  • 📈 Metriche Traffico: *${formatNumber(c.clicks)} click* (CTR: *${(c.ctr || 0).toFixed(2)}%* | CPC: *${formatCurrency(c.cpc || 0, currency)}*)
+  • 👁️ Impression: *${formatNumber(c.impressions)}* (CPM: *${formatCurrency(c.cpm || 0, currency)}*)${todayText}`;
+    }).join("\n\n────────────────────────\n\n");
+  }
+
+  // Health diagnosis & assessment
+  let healthEvaluation = "";
+  const overCount = activeCampaigns.filter(c => (c.totalLeads > 0 && c.cpl > clientThreshold) || (c.totalLeads === 0 && c.spend >= clientThreshold)).length;
+  if (activeCampaigns.length === 0) {
+    healthEvaluation = `ℹ️ *Stato:* Nessuna campagna attiva da valutare al momento.`;
+  } else if (overCount === 0) {
+    healthEvaluation = `✅ *Ottimo andamento:* Tutte le ${activeCampaigns.length} campagne attive stanno convertendo in modo efficiente e si mantengono al di sotto della soglia stabilita di *${formatCurrency(clientThreshold, currency)}*.`;
+  } else {
+    healthEvaluation = `⚠️ *Attenzione richiesta:* Ci sono *${overCount} su ${activeCampaigns.length} campagne attive* con costo superiore alla soglia target di *${formatCurrency(clientThreshold, currency)}*. Si consiglia di verificare creativi, frequenza o segmenti di pubblico.`;
+  }
+
+  return `📊 *REPORT DETTAGLIATO CAMPAGNE ATTIVE*
+🏢 *Cliente:* *${client.name}*
+📅 *Periodo Analizzato:* *${dateLabel}*
+⏱️ *Generato il:* ${nowDate} alle ${nowTime}
+━━━━━━━━━━━━━━━━━━━━
+
+📈 *PANORAMICA ACCOUNT:*
+• 💶 Spesa Totale Periodo: *${formatCurrency(totalSpend, currency)}*
+• 👥 Lead Totali Raccolti: *${formatNumber(totalLeads)} contatti*
+• 🎯 Costo Medio / Lead (CPL): *${totalLeads > 0 ? formatCurrency(avgCpl, currency) : "-"}*
+• ⏱️ Budget Giornaliero Attivo: *${formatCurrency(totalDailyBudget, currency)}/gg*
+• 🎯 Soglia CPL Riferimento: *${formatCurrency(clientThreshold, currency)}* ${isAccountOverThreshold ? "*(⚠️ SUPERATA)*" : "*(✅ IN SOGLIA)*"}
+${(kpis.todaySpend > 0) ? `• ⚡ Spesa di Oggi (Realtime): *${formatCurrency(kpis.todaySpend, currency)}*` : ""}
+${leadSources.length > 0 ? `\n👥 *FONTI DEI CONTATTI:*\n${leadSources.join("\n")}\n` : ""}
+📊 *COPERTURA & ENGAGEMENT ACCOUNT:*
+• 👁️ Impression: *${formatNumber(kpis.impressions || 0)}*
+• 👤 Copertura (Reach): *${formatNumber(kpis.reach || 0)} persone*
+• 🔄 Frequenza media: *${(kpis.frequency || 1).toFixed(2)}*
+• 🖱️ Click totali: *${formatNumber(kpis.clicks || 0)}* (CTR: *${(kpis.ctr || 0).toFixed(2)}%* | CPC: *${formatCurrency(kpis.cpc || 0, currency)}*)
+
+━━━━━━━━━━━━━━━━━━━━
+🎯 *CAMPAGNE ATTIVE IN CORSO (${activeCampaigns.length}):*
+━━━━━━━━━━━━━━━━━━━━
+
+${campaignsSection}
+
+━━━━━━━━━━━━━━━━━━━━
+💡 *VALUTAZIONE SINTETICA & STATO SALUTE:*
+${healthEvaluation}
+━━━━━━━━━━━━━━━━━━━━
+_Generato con LeadSum Meta Intelligence_`;
+}
+
+window.openDetailedClientReport = async function(accountId) {
+  const client = state.clientsData.find(c => c.id === accountId) || state.allAdAccounts.find(a => a.id === accountId);
+  if (!client) return;
+
+  if (DOM.clientDetailedReportBadge) {
+    DOM.clientDetailedReportBadge.textContent = client.name;
+  }
+
+  if (DOM.clientReportCopyFeedback) {
+    DOM.clientReportCopyFeedback.textContent = "";
+  }
+
+  if (DOM.modalClientDetailedReport) {
+    DOM.modalClientDetailedReport.showModal();
+  }
+
+  let detail = state.expandedDetailsCache[accountId];
+  if (detail && detail.isDemo && !accountId.startsWith("act_demo")) {
+    detail = null;
+    delete state.expandedDetailsCache[accountId];
+  }
+  if (!detail) {
+    if (DOM.clientReportLoading) DOM.clientReportLoading.style.display = "flex";
+    if (DOM.clientDetailedReportTextOutput) DOM.clientDetailedReportTextOutput.value = "";
+    if (DOM.clientReportMetaPills) DOM.clientReportMetaPills.innerHTML = "";
+
+    try {
+      const params = new URLSearchParams({
+        accountId,
+        datePreset: state.datePreset
+      });
+      if (state.datePreset === "custom" && state.customSince && state.customUntil) {
+        params.set("since", state.customSince);
+        params.set("until", state.customUntil);
+      }
+      detail = await api(`/api/meta/insights/summary?${params.toString()}`);
+      state.expandedDetailsCache[accountId] = detail;
+    } catch (err) {
+      if (DOM.clientDetailedReportTextOutput) {
+        DOM.clientDetailedReportTextOutput.value = `⚠️ Errore nel recupero dei dettagli delle campagne: ${err.message}`;
+      }
+      if (DOM.clientReportLoading) DOM.clientReportLoading.style.display = "none";
+      return;
+    }
+  }
+
+  if (DOM.clientReportLoading) DOM.clientReportLoading.style.display = "none";
+
+  const reportText = buildDetailedClientWhatsAppReport(client, detail);
+  if (DOM.clientDetailedReportTextOutput) {
+    DOM.clientDetailedReportTextOutput.value = reportText;
+  }
+
+  // Populate Meta Pills Header
+  if (DOM.clientReportMetaPills) {
+    const clientThreshold = getClientThreshold(client.id);
+    const kpis = detail.kpis || {};
+    const totalLeads = kpis.totalLeads !== undefined ? kpis.totalLeads : (client.totalLeads || 0);
+    const spend = kpis.totalSpend !== undefined ? kpis.totalSpend : (client.spend || 0);
+    const cpl = totalLeads > 0 ? (kpis.averageCpl !== undefined ? kpis.averageCpl : (client.cpl || 0)) : 0;
+    const isOver = (totalLeads > 0 && cpl > clientThreshold) || (totalLeads === 0 && spend >= clientThreshold);
+
+    DOM.clientReportMetaPills.innerHTML = `
+      <span class="report-meta-pill">Periodo: <strong>${getPresetLabel(state.datePreset)}</strong></span>
+      <span class="report-meta-pill">Spesa: <strong>${formatCurrency(spend, client.currency)}</strong></span>
+      <span class="report-meta-pill">Lead: <strong>${totalLeads}</strong></span>
+      <span class="report-meta-pill ${isOver ? "is-danger" : "is-ok"}">CPL: <strong>${totalLeads > 0 ? formatCurrency(cpl, client.currency) : "-"}</strong></span>
+      <span class="report-meta-pill ${isOver ? "is-danger" : "is-ok"}">Soglia: <strong>€ ${clientThreshold.toFixed(2)}</strong> (${isOver ? "Superata" : "In soglia"})</span>
+    `;
+  }
+};
+
+/* ==========================================================================
+   Client Ads Details Modal & Inline Ad Control
+   ========================================================================== */
+
+window.openClientAdsModal = async function(accountId) {
+  state.adsModal.accountId = accountId;
+  state.adsModal.filter = "all";
+  state.adsModal.search = "";
+  if (!state.adsModal.sortColumn) {
+    state.adsModal.sortColumn = "cpl";
+    state.adsModal.sortDirection = "desc";
+  }
+  state.adsModal.defaultCollapsed = null;
+  state.adsModal.collapsedAdsets = {};
+
+  const client = state.clientsData.find(c => c.id === accountId) || state.allAdAccounts.find(a => a.id === accountId) || { id: accountId, name: accountId };
+  const clientThreshold = getClientThreshold(accountId);
+
+  if (DOM.clientAdsModalClientName) {
+    DOM.clientAdsModalClientName.textContent = client.name || accountId;
+  }
+  if (DOM.clientAdsModalThresholdBadge) {
+    DOM.clientAdsModalThresholdBadge.textContent = `Soglia CPL: € ${clientThreshold.toFixed(2)}`;
+  }
+  if (DOM.clientAdsSearchInput) {
+    DOM.clientAdsSearchInput.value = "";
+  }
+  if (DOM.clientAdsSortSelect) {
+    DOM.clientAdsSortSelect.value = `${state.adsModal.sortColumn}_${state.adsModal.sortDirection}`;
+  }
+  if (DOM.clientAdsFilterButtons) {
+    DOM.clientAdsFilterButtons.forEach(btn => {
+      if (btn.dataset.filter === "all") btn.classList.add("active");
+      else btn.classList.remove("active");
+    });
+  }
+
+  if (DOM.modalClientAdsDetails) {
+    DOM.modalClientAdsDetails.showModal();
+  }
+
+  let detail = state.expandedDetailsCache[accountId];
+  if (detail && detail.isDemo && !accountId.startsWith("act_demo")) {
+    detail = null;
+    delete state.expandedDetailsCache[accountId];
+  }
+  if (!detail || !detail.ads) {
+    if (DOM.clientAdsLoading) DOM.clientAdsLoading.style.display = "flex";
+    if (DOM.clientAdsGroupedContainer) DOM.clientAdsGroupedContainer.innerHTML = "";
+
+    try {
+      const params = new URLSearchParams({
+        accountId,
+        datePreset: state.datePreset
+      });
+      if (state.datePreset === "custom" && state.customSince && state.customUntil) {
+        params.set("since", state.customSince);
+        params.set("until", state.customUntil);
+      }
+      detail = await api(`/api/meta/insights/summary?${params.toString()}`);
+      state.expandedDetailsCache[accountId] = detail;
+    } catch (err) {
+      if (DOM.clientAdsGroupedContainer) {
+        DOM.clientAdsGroupedContainer.innerHTML = `
+          <div style="text-align: center; color: var(--color-rose); padding: 30px; background: #0d111a; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+            Errore caricamento inserzioni: ${escapeHtml(err.message)}
+          </div>
+        `;
+      }
+      if (DOM.clientAdsLoading) DOM.clientAdsLoading.style.display = "none";
+      return;
+    }
+  }
+
+  if (DOM.clientAdsLoading) DOM.clientAdsLoading.style.display = "none";
+  renderClientAdsModalContent(accountId);
+};
+
+window.toggleAdsetCollapse = function(safeId) {
+  const card = document.getElementById(safeId);
+  if (card) {
+    card.classList.toggle("is-collapsed");
+    state.adsModal.collapsedAdsets[safeId] = card.classList.contains("is-collapsed");
+  }
+};
+
+window.setAllAdsetsCollapsed = function(collapsed) {
+  state.adsModal.defaultCollapsed = collapsed;
+  state.adsModal.collapsedAdsets = {};
+  const cards = document.querySelectorAll(".adset-group-card");
+  cards.forEach(card => {
+    const id = card.dataset.adsetId;
+    if (collapsed) {
+      card.classList.add("is-collapsed");
+      if (id) state.adsModal.collapsedAdsets[id] = true;
+    } else {
+      card.classList.remove("is-collapsed");
+      if (id) state.adsModal.collapsedAdsets[id] = false;
+    }
+  });
+};
+
+window.toggleAdsModalSort = function(column) {
+  if (state.adsModal.sortColumn === column) {
+    state.adsModal.sortDirection = state.adsModal.sortDirection === "asc" ? "desc" : "asc";
+  } else {
+    state.adsModal.sortColumn = column;
+    state.adsModal.sortDirection = (column === "name" || column === "status") ? "asc" : "desc";
+  }
+
+  if (DOM.clientAdsSortSelect) {
+    const val = `${state.adsModal.sortColumn}_${state.adsModal.sortDirection}`;
+    if (Array.from(DOM.clientAdsSortSelect.options).some(o => o.value === val)) {
+      DOM.clientAdsSortSelect.value = val;
+    }
+  }
+
+  if (state.adsModal.accountId) {
+    renderClientAdsModalContent(state.adsModal.accountId);
+  }
+};
+
+function renderClientAdsModalContent(accountId) {
+  const client = state.clientsData.find(c => c.id === accountId) || state.allAdAccounts.find(a => a.id === accountId) || { id: accountId, name: accountId };
+  const detail = state.expandedDetailsCache[accountId] || {};
+  const ads = detail.ads || [];
+  const clientThreshold = getClientThreshold(accountId);
+  const currency = client.currency || detail.account?.currency || "EUR";
+
+  // Calculate statistics across all ads
+  const totalAds = ads.length;
+  const activeAds = ads.filter(a => a.status === "ACTIVE" || a.effective_status === "ACTIVE");
+  const dangerAds = activeAds.filter(a => (a.totalLeads > 0 && a.cpl > clientThreshold) || (a.totalLeads === 0 && a.spend >= clientThreshold));
+
+  const totalSpend = ads.reduce((sum, a) => sum + (a.spend || 0), 0);
+  const totalLeads = ads.reduce((sum, a) => sum + (a.totalLeads || 0), 0);
+  const avgCpl = totalLeads > 0 ? totalSpend / totalLeads : 0;
+  const totalClicks = ads.reduce((sum, a) => sum + (a.clicks || 0), 0);
+  const totalImpressions = ads.reduce((sum, a) => sum + (a.impressions || 0), 0);
+  const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+
+  // Update Filter Pill Counts
+  if (DOM.filterCountAll) DOM.filterCountAll.textContent = totalAds;
+  if (DOM.filterCountActive) DOM.filterCountActive.textContent = activeAds.length;
+  if (DOM.filterCountDanger) DOM.filterCountDanger.textContent = dangerAds.length;
+
+  // Render KPI Bar (No emojis)
+  if (DOM.clientAdsKpiBar) {
+    DOM.clientAdsKpiBar.innerHTML = `
+      <div class="ads-kpi-item">
+        <span class="ads-kpi-label">Spesa Inserzioni</span>
+        <span class="ads-kpi-val">${formatCurrency(totalSpend, currency)}</span>
+      </div>
+      <div class="ads-kpi-item">
+        <span class="ads-kpi-label">Lead Generati</span>
+        <span class="ads-kpi-val ${totalLeads > 0 ? 'text-success' : ''}">${formatNumber(totalLeads)}</span>
+      </div>
+      <div class="ads-kpi-item">
+        <span class="ads-kpi-label">CPL Medio</span>
+        <span class="ads-kpi-val ${totalLeads > 0 && avgCpl > clientThreshold ? 'text-danger' : 'text-success'}">
+          ${totalLeads > 0 ? formatCurrency(avgCpl, currency) : '-'}
+        </span>
+      </div>
+      <div class="ads-kpi-item">
+        <span class="ads-kpi-label">Sopra Soglia (€ ${clientThreshold.toFixed(2)})</span>
+        <span class="ads-kpi-val ${dangerAds.length > 0 ? 'text-danger' : 'text-success'}">${dangerAds.length} critiche</span>
+      </div>
+      <div class="ads-kpi-item">
+        <span class="ads-kpi-label">Attive / Totali</span>
+        <span class="ads-kpi-val">${activeAds.length} / ${totalAds}</span>
+      </div>
+      <div class="ads-kpi-item">
+        <span class="ads-kpi-label">CTR Medio</span>
+        <span class="ads-kpi-val">${avgCtr.toFixed(2)}%</span>
+      </div>
+    `;
+  }
+
+  // Filter Ads based on selected tab and search
+  let filtered = [...ads];
+  const filterMode = state.adsModal.filter || "all";
+  if (filterMode === "active") {
+    filtered = filtered.filter(a => a.status === "ACTIVE" || a.effective_status === "ACTIVE");
+  } else if (filterMode === "danger") {
+    filtered = filtered.filter(a => {
+      const isActive = a.status === "ACTIVE" || a.effective_status === "ACTIVE";
+      return isActive && ((a.totalLeads > 0 && a.cpl > clientThreshold) || (a.totalLeads === 0 && a.spend >= clientThreshold));
+    });
+  }
+
+  const search = (state.adsModal.search || "").toLowerCase().trim();
+  if (search) {
+    filtered = filtered.filter(a =>
+      (a.name || "").toLowerCase().includes(search) ||
+      (a.campaign_name || "").toLowerCase().includes(search) ||
+      (a.adset_name || "").toLowerCase().includes(search)
+    );
+  }
+
+  // Update Footer Count
+  if (DOM.clientAdsFooterCount) {
+    DOM.clientAdsFooterCount.textContent = `${filtered.length} di ${totalAds} inserzioni visualizzate (Filtro: ${filterMode === 'all' ? 'Tutte' : filterMode === 'active' ? 'Solo Attive' : 'Sopra Soglia'})`;
+  }
+
+  if (!DOM.clientAdsGroupedContainer) return;
+
+  if (filtered.length === 0) {
+    DOM.clientAdsGroupedContainer.innerHTML = `
+      <div style="text-align: center; color: var(--text-dim); padding: 48px 20px; background: #0d111a; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+        <p style="font-size: 0.95rem; font-weight: 600; color: #ffffff; margin-bottom: 6px;">Nessuna inserzione trovata</p>
+        <span style="font-size: 0.82rem;">Nessuna inserzione corrisponde ai filtri di ricerca impostati.</span>
+      </div>
+    `;
+    return;
+  }
+
+  // Group filtered ads by AdSet
+  const groupsMap = new Map();
+  filtered.forEach(ad => {
+    const adsetId = ad.adset_id || "unassigned";
+    if (!groupsMap.has(adsetId)) {
+      groupsMap.set(adsetId, {
+        id: adsetId,
+        name: ad.adset_name || "Gruppo Inserzioni",
+        campaignId: ad.campaign_id || "",
+        campaignName: ad.campaign_name || "Campagna",
+        ads: []
+      });
+    }
+    groupsMap.get(adsetId).ads.push(ad);
+  });
+
+  const groups = Array.from(groupsMap.values());
+
+  // Compute metrics per AdSet group
+  groups.forEach(g => {
+    g.totalSpend = g.ads.reduce((s, a) => s + (a.spend || 0), 0);
+    g.totalLeads = g.ads.reduce((s, a) => s + (a.totalLeads || 0), 0);
+    g.avgCpl = g.totalLeads > 0 ? g.totalSpend / g.totalLeads : 0;
+    g.activeCount = g.ads.filter(a => a.status === "ACTIVE" || a.effective_status === "ACTIVE").length;
+    g.dangerCount = g.ads.filter(a => {
+      const isActive = a.status === "ACTIVE" || a.effective_status === "ACTIVE";
+      return isActive && ((a.totalLeads > 0 && a.cpl > clientThreshold) || (a.totalLeads === 0 && a.spend >= clientThreshold));
+    }).length;
+    g.hasDanger = g.dangerCount > 0;
+  });
+
+  // Sorting
+  const sortCol = state.adsModal.sortColumn || "cpl";
+  const sortDir = state.adsModal.sortDirection || "desc";
+
+  function getAdSortValue(ad, col) {
+    switch (col) {
+      case "cpl":
+        if (ad.totalLeads > 0) return ad.cpl;
+        if (ad.spend > 0) return 100000 + ad.spend;
+        return 0;
+      case "spend":
+        return ad.spend || 0;
+      case "leads":
+        return ad.totalLeads || 0;
+      case "name":
+        return (ad.name || "").toLowerCase();
+      case "status":
+        return (ad.status === "ACTIVE" || ad.effective_status === "ACTIVE") ? 1 : 0;
+      case "ctr":
+        return ad.ctr || 0;
+      case "cpc":
+        return ad.cpc || 0;
+      case "impressions":
+        return ad.impressions || 0;
+      default:
+        return 0;
+    }
+  }
+
+  function getGroupSortValue(g, col) {
+    switch (col) {
+      case "cpl":
+        if (g.totalLeads > 0) return g.avgCpl;
+        if (g.totalSpend > 0) return 100000 + g.totalSpend;
+        return 0;
+      case "spend":
+        return g.totalSpend;
+      case "leads":
+        return g.totalLeads;
+      case "name":
+        return (g.name || "").toLowerCase();
+      case "status":
+        return g.activeCount;
+      default:
+        return 0;
+    }
+  }
+
+  // Sort groups
+  groups.sort((a, b) => {
+    const valA = getGroupSortValue(a, sortCol);
+    const valB = getGroupSortValue(b, sortCol);
+    if (typeof valA === "string") {
+      return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    }
+    return sortDir === "asc" ? valA - valB : valB - valA;
+  });
+
+  // Sort ads inside each group
+  groups.forEach(g => {
+    g.ads.sort((a, b) => {
+      const valA = getAdSortValue(a, sortCol);
+      const valB = getAdSortValue(b, sortCol);
+      if (typeof valA === "string") {
+        return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      return sortDir === "asc" ? valA - valB : valB - valA;
+    });
+  });
+
+  // Render AdSets with clean, emoji-free modern layout
+  DOM.clientAdsGroupedContainer.innerHTML = groups.map(group => {
+    const safeId = "adset_" + String(group.id || "unassigned").replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    let isCollapsed;
+    if (state.adsModal.collapsedAdsets[safeId] !== undefined) {
+      isCollapsed = state.adsModal.collapsedAdsets[safeId];
+    } else if (state.adsModal.defaultCollapsed !== null && state.adsModal.defaultCollapsed !== undefined) {
+      isCollapsed = state.adsModal.defaultCollapsed;
+    } else if (filterMode === "danger") {
+      isCollapsed = !group.hasDanger;
+    } else {
+      isCollapsed = true; // Show AdSet division first!
+    }
+
+    const adsRows = group.ads.map(ad => {
+      const isActive = ad.status === "ACTIVE" || ad.effective_status === "ACTIVE";
+      const isOver = isActive && ((ad.totalLeads > 0 && ad.cpl > clientThreshold) || (ad.totalLeads === 0 && ad.spend >= clientThreshold));
+
+      const cplClass = ad.totalLeads === 0
+        ? "cpl-tag tag-zero"
+        : (isOver ? "cpl-tag tag-danger" : "cpl-tag tag-ok");
+
+      const adManagerLink = ad.adsManagerUrl || `https://www.facebook.com/adsmanager/manage/ads?selected_ad_ids=${ad.id}`;
+
+      return `
+        <tr class="${isOver ? 'ad-row-danger' : ''}">
+          <td style="width: 32%; min-width: 220px;">
+            <div class="ad-cell-main">
+              <a href="${adManagerLink}" target="_blank" rel="noopener noreferrer" class="ad-name-title" title="Apri inserzione in Meta Ads Manager">
+                <span>${escapeHtml(ad.name)}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                  <polyline points="15 3 21 3 21 9"></polyline>
+                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+              </a>
+              ${isOver ? `<span class="ad-threshold-alert-tag">Costo sopra la soglia (€ ${clientThreshold.toFixed(2)})</span>` : ""}
+            </div>
+          </td>
+          <td class="text-center" style="width: 140px;">
+            <div class="ad-status-action-wrap">
+              <span class="ad-status-pill ${isActive ? 'is-active' : 'is-paused'}">
+                <span class="status-dot"></span>
+                <span>${isActive ? 'Attiva' : 'In Pausa'}</span>
+              </span>
+              <button type="button" class="btn-toggle-ad-state ${isActive ? 'btn-pause-action' : 'btn-activate-action'}"
+                      onclick="event.stopPropagation(); toggleAdStatusInModal('${ad.id}', '${isActive ? 'PAUSED' : 'ACTIVE'}', '${accountId}')"
+                      title="${isActive ? 'Metti in pausa questa inserzione su Meta' : 'Riattiva questa inserzione su Meta'}">
+                ${isActive ? 'Metti in Pausa' : 'Attiva Inserzione'}
+              </button>
+            </div>
+          </td>
+          <td class="text-right val-mono" style="width: 100px;">${formatCurrency(ad.spend || 0, currency)}</td>
+          <td class="text-right val-mono ${ad.totalLeads > 0 ? 'text-emerald' : ''}" style="width: 80px;">${formatNumber(ad.totalLeads || 0)}</td>
+          <td class="text-right" style="width: 120px;">
+            <span class="${cplClass}">
+              ${ad.totalLeads > 0 ? formatCurrency(ad.cpl, currency) : (ad.spend >= clientThreshold ? '0 Lead (Sopra Soglia)' : '-')}
+            </span>
+          </td>
+          <td class="text-right val-mono" style="width: 80px;">${(ad.ctr || 0).toFixed(2)}%</td>
+          <td class="text-right val-mono" style="width: 80px;">${formatCurrency(ad.cpc || 0, currency)}</td>
+          <td class="text-right val-mono" style="width: 100px;">${formatNumber(ad.impressions || 0)}</td>
+        </tr>
+      `;
+    }).join("");
+
+    return `
+      <div class="adset-group-card ${group.hasDanger ? 'has-danger-ads' : ''} ${isCollapsed ? 'is-collapsed' : ''}" id="${safeId}" data-adset-id="${safeId}">
+        <div class="adset-group-header" onclick="toggleAdsetCollapse('${safeId}')">
+          <div class="adset-header-left">
+            <svg class="adset-chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+            <div class="adset-title-block">
+              <div class="adset-title-row">
+                <span class="adset-name-text" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}</span>
+                ${group.hasDanger ? `<span class="adset-danger-badge">${group.dangerCount} Sopra Soglia</span>` : ''}
+              </div>
+              <div class="adset-camp-tag">
+                <span>Campagna: ${escapeHtml(group.campaignName)}</span>
+                <span>•</span>
+                <span>${group.ads.length} inserzion${group.ads.length === 1 ? 'e' : 'i'} (${group.activeCount} attiv${group.activeCount === 1 ? 'a' : 'e'})</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="adset-header-right">
+            <div class="adset-stat-item">
+              <span class="adset-stat-label">Spesa</span>
+              <span class="adset-stat-val">${formatCurrency(group.totalSpend, currency)}</span>
+            </div>
+            <div class="adset-stat-item">
+              <span class="adset-stat-label">Lead</span>
+              <span class="adset-stat-val ${group.totalLeads > 0 ? 'text-success' : ''}">${formatNumber(group.totalLeads)}</span>
+            </div>
+            <div class="adset-stat-item">
+              <span class="adset-stat-label">CPL Medio</span>
+              <span class="adset-stat-val ${group.totalLeads > 0 && group.avgCpl > clientThreshold ? 'text-danger' : (group.totalLeads > 0 ? 'text-success' : '')}">
+                ${group.totalLeads > 0 ? formatCurrency(group.avgCpl, currency) : '-'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="adset-group-body">
+          <table class="adset-ads-table">
+            <thead>
+              <tr>
+                <th class="sortable-th ${sortCol === 'name' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('name')" style="width: 32%; min-width: 220px;">
+                  Inserzione <span class="sort-arrow-icon">${sortCol === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-center ${sortCol === 'status' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('status')" style="width: 140px;">
+                  Stato <span class="sort-arrow-icon">${sortCol === 'status' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-right ${sortCol === 'spend' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('spend')" style="width: 100px;">
+                  Spesa <span class="sort-arrow-icon">${sortCol === 'spend' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-right ${sortCol === 'leads' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('leads')" style="width: 80px;">
+                  Lead <span class="sort-arrow-icon">${sortCol === 'leads' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-right ${sortCol === 'cpl' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('cpl')" style="width: 120px;">
+                  CPL <span class="sort-arrow-icon">${sortCol === 'cpl' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-right ${sortCol === 'ctr' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('ctr')" style="width: 80px;">
+                  CTR <span class="sort-arrow-icon">${sortCol === 'ctr' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-right ${sortCol === 'cpc' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('cpc')" style="width: 80px;">
+                  CPC <span class="sort-arrow-icon">${sortCol === 'cpc' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+                <th class="sortable-th text-right ${sortCol === 'impressions' ? 'is-sorted' : ''}" onclick="toggleAdsModalSort('impressions')" style="width: 100px;">
+                  Impression <span class="sort-arrow-icon">${sortCol === 'impressions' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              ${adsRows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+window.toggleAdStatusInModal = async function(adId, newStatus, accountId) {
+  const isPause = newStatus === "PAUSED";
+  const actionText = isPause ? "mettere in PAUSA" : "ATTIVARE";
+  if (!confirm(`Sei sicuro di voler ${actionText} questa inserzione su Meta Ads?`)) {
+    return;
+  }
+
+  try {
+    await api("/api/meta/ads/toggle-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ adId, status: newStatus })
+    });
+
+    // Update in cached details
+    if (state.expandedDetailsCache[accountId]?.ads) {
+      const ad = state.expandedDetailsCache[accountId].ads.find(a => a.id === adId);
+      if (ad) {
+        ad.status = newStatus;
+        ad.effective_status = newStatus;
+      }
+    }
+
+    // Refresh modal content immediately
+    renderClientAdsModalContent(accountId);
+
+    // Update client row & totals in the background
+    renderTotalsBar(state.clientsData);
+    renderClientsTable();
+  } catch (err) {
+    alert(`Errore cambio stato inserzione: ${err.message}`);
+  }
+};
+
+/* ==========================================================================
+   Event Bindings
+   ========================================================================== */
+
+function bindEvents() {
+  // Date Presets
+  DOM.dateButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const preset = btn.dataset.preset;
+      state.datePreset = preset;
+      localStorage.setItem(STORAGE_KEYS.DATE_PRESET, preset);
+      syncDateButtonsUI();
+      if (preset !== "custom") {
+        state.expandedDetailsCache = {};
+        fetchClientsData();
+      }
+    });
+  });
+
+  // Custom Date Apply
+  DOM.btnApplyCustomDate?.addEventListener("click", () => {
+    const since = DOM.inputDateSince?.value;
+    const until = DOM.inputDateUntil?.value;
+    if (!since || !until) {
+      alert("Seleziona entrambe le date (Dal e Al).");
+      return;
+    }
+    state.customSince = since;
+    state.customUntil = until;
+    localStorage.setItem(STORAGE_KEYS.CUSTOM_SINCE, since);
+    localStorage.setItem(STORAGE_KEYS.CUSTOM_UNTIL, until);
+    syncDateButtonsUI();
+    state.expandedDetailsCache = {};
+    fetchClientsData();
+  });
+
+  // Threshold Input (instant reactive update)
+  DOM.globalThresholdInput?.addEventListener("input", (e) => {
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val) && val > 0) {
+      state.costThreshold = val;
+      localStorage.setItem(STORAGE_KEYS.COST_THRESHOLD, String(val));
+      renderTotalsBar(state.clientsData);
+      renderClientsTable();
+    }
+  });
+
+  // Only Active Campaigns Checkbox (instant reactive update)
+  DOM.chkOnlyActiveCampaigns?.addEventListener("change", (e) => {
+    state.onlyActiveCampaigns = e.target.checked;
+    localStorage.setItem(STORAGE_KEYS.ONLY_ACTIVE, String(state.onlyActiveCampaigns));
+    renderClientsTable();
+  });
+
+  // Client Search Filter
+  DOM.clientSearchInput?.addEventListener("input", () => {
+    renderClientsTable();
+  });
+
+  // Sorting
+  DOM.tableHeaders.forEach(th => {
+    th.addEventListener("click", () => {
+      const col = th.dataset.sort;
+      if (col === "name") {
+        if (state.sortColumn === "custom") {
+          state.sortColumn = "name";
+          state.sortDirection = "asc";
+        } else if (state.sortColumn === "name" && state.sortDirection === "asc") {
+          state.sortDirection = "desc";
+        } else {
+          state.sortColumn = "custom";
+          state.sortDirection = "asc";
+        }
+      } else {
+        if (state.sortColumn === col) {
+          state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
+        } else {
+          state.sortColumn = col;
+          state.sortDirection = "desc";
+        }
+      }
+      renderClientsTable();
+    });
+  });
+
+  // Refresh Button
+  DOM.btnRefreshData?.addEventListener("click", () => {
+    state.expandedDetailsCache = {};
+    fetchClientsData();
+  });
+
+  // Accounts Modal
+  DOM.btnOpenAccountsModal?.addEventListener("click", openAccountsModal);
+  DOM.btnCloseAccountsModal?.addEventListener("click", () => DOM.modalAccounts?.close());
+  DOM.accountModalSearchInput?.addEventListener("input", renderAccountsCheckboxList);
+
+  DOM.btnSelectAllAccounts?.addEventListener("click", () => {
+    state.visibleAccountIds = state.allAdAccounts.map(a => a.id);
+    renderAccountsCheckboxList();
+  });
+
+  DOM.btnDeselectAllAccounts?.addEventListener("click", () => {
+    state.visibleAccountIds = [];
+    renderAccountsCheckboxList();
+  });
+
+  DOM.btnResetAlphabeticalOrder?.addEventListener("click", resetAccountsAlphabeticalOrder);
+
+  DOM.btnSaveAccountSelection?.addEventListener("click", saveAccountSelection);
+
+  // Global Multi-Client Report Modal
+  DOM.btnOpenReportModal?.addEventListener("click", openReportModal);
+  DOM.btnCloseReportModal?.addEventListener("click", () => DOM.modalReport?.close());
+
+  DOM.btnCopyReportText?.addEventListener("click", async () => {
+    if (DOM.reportTextOutput) {
+      await navigator.clipboard.writeText(DOM.reportTextOutput.value);
+      if (DOM.reportCopyFeedback) DOM.reportCopyFeedback.textContent = "✅ Copiato!";
+      setTimeout(() => {
+        if (DOM.reportCopyFeedback) DOM.reportCopyFeedback.textContent = "";
+      }, 2500);
+    }
+  });
+
+  // Detailed Single Client Report Modal (WhatsApp)
+  DOM.btnCloseClientDetailedReportModal?.addEventListener("click", () => DOM.modalClientDetailedReport?.close());
+
+  DOM.btnCopyClientDetailedReportText?.addEventListener("click", async () => {
+    if (DOM.clientDetailedReportTextOutput && DOM.clientDetailedReportTextOutput.value) {
+      await navigator.clipboard.writeText(DOM.clientDetailedReportTextOutput.value);
+      if (DOM.clientReportCopyFeedback) DOM.clientReportCopyFeedback.textContent = "✅ Testo pronto per WhatsApp copiato!";
+      setTimeout(() => {
+        if (DOM.clientReportCopyFeedback) DOM.clientReportCopyFeedback.textContent = "";
+      }, 2500);
+    }
+  });
+
+  DOM.btnOpenInWhatsApp?.addEventListener("click", () => {
+    if (DOM.clientDetailedReportTextOutput && DOM.clientDetailedReportTextOutput.value) {
+      const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(DOM.clientDetailedReportTextOutput.value)}`;
+      window.open(waUrl, "_blank");
+    }
+  });
+
+  // Client Ads Details Modal Bindings
+  DOM.btnCloseClientAdsModal?.addEventListener("click", () => DOM.modalClientAdsDetails?.close());
+  DOM.btnCloseClientAdsModalFooter?.addEventListener("click", () => DOM.modalClientAdsDetails?.close());
+
+  DOM.clientAdsSearchInput?.addEventListener("input", (e) => {
+    state.adsModal.search = e.target.value.toLowerCase().trim();
+    if (state.adsModal.accountId) {
+      renderClientAdsModalContent(state.adsModal.accountId);
+    }
+  });
+
+  DOM.clientAdsFilterButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      DOM.clientAdsFilterButtons.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.adsModal.filter = btn.dataset.filter || "all";
+      if (state.adsModal.accountId) {
+        renderClientAdsModalContent(state.adsModal.accountId);
+      }
+    });
+  });
+
+  DOM.clientAdsSortSelect?.addEventListener("change", (e) => {
+    const val = e.target.value;
+    const parts = val.split("_");
+    state.adsModal.sortColumn = parts[0] || "cpl";
+    state.adsModal.sortDirection = parts[1] || "desc";
+    if (state.adsModal.accountId) {
+      renderClientAdsModalContent(state.adsModal.accountId);
+    }
+  });
+
+  DOM.btnExpandAllAdsets?.addEventListener("click", () => {
+    setAllAdsetsCollapsed(false);
+  });
+
+  DOM.btnCollapseAllAdsets?.addEventListener("click", () => {
+    setAllAdsetsCollapsed(true);
+  });
+
+  // Meta Auth Bindings
+  DOM.btnFacebookLogin?.addEventListener("click", loginWithFacebook);
+  DOM.btnQuickLogin?.addEventListener("click", handleQuickLogin);
+  DOM.btnLogout?.addEventListener("click", logout);
+  DOM.btnToggleManualToken?.addEventListener("click", () => {
+    if (DOM.manualTokenBox) {
+      const isHidden = DOM.manualTokenBox.style.display === "none";
+      DOM.manualTokenBox.style.display = isHidden ? "flex" : "none";
+      if (DOM.tokenChevron) DOM.tokenChevron.textContent = isHidden ? "▲" : "▼";
+    }
+  });
+  DOM.btnSubmitManualToken?.addEventListener("click", handleManualTokenSubmit);
+  DOM.inputManualToken?.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") handleManualTokenSubmit();
+  });
+}
+
+// Start app
+window.addEventListener("DOMContentLoaded", initApp);
